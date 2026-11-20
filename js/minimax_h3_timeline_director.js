@@ -1431,7 +1431,7 @@ class TimelineDirectorUI {
     for(const [group,bin] of imageBins){
       bin.innerHTML=this.state.images.filter(asset=>(asset.group||"character")===group).map(imgHtml).join("");
       for(const button of bin.querySelectorAll("[data-remove-image]"))button.onclick=event=>{event.stopPropagation();this.state.images=this.state.images.filter(asset=>asset.id!==button.dataset.removeImage);this.pruneSegmentAssignments();this.sync();this.render();};
-      this.bindAssetReorder(bin,"images","imageOrderUpdated");
+      this.bindAssetReorder(bin,"images","imageOrderUpdated",group);
     }
     const audioBins=[["ref",this.root.querySelector('[data-bin="audios-ref"]')],["music",this.root.querySelector('[data-bin="audios-music"]')]];
     for(const [group,bin] of audioBins){
@@ -1444,7 +1444,7 @@ class TimelineDirectorUI {
         for(const eventName of ["pointerdown","click","wheel"])select.addEventListener(eventName,event=>event.stopPropagation());
         select.onchange=()=>{const asset=this.state.audios.find(item=>String(item.id)===String(select.dataset.audioMode));if(!asset)return;asset.audioMode=select.value==="locked"?"locked":"reference";this.sync();this.render();};
       }
-      this.bindAssetReorder(bin,"audios","audioOrderUpdated");
+      this.bindAssetReorder(bin,"audios","audioOrderUpdated",group);
     }
     for(const nameEl of this.root.querySelectorAll("[data-edit-asset-name]")){
       nameEl.ondblclick=event=>{
@@ -1457,33 +1457,90 @@ class TimelineDirectorUI {
     }
   }
 
-  bindAssetReorder(bin, kind, label) {
-    const clearMarkers=()=>{for(const card of bin.querySelectorAll(".m3td-asset"))card.classList.remove("dragging","drop-before","drop-after");};
+  bindAssetReorder(bin, kind, label, group = null) {
+    const clearMarkers=()=>{
+      for(const card of this.root.querySelectorAll(".m3td-asset"))card.classList.remove("dragging","drop-before","drop-after");
+      for(const target of this.root.querySelectorAll(".m3td-bin-list.drag-over"))target.classList.remove("drag-over");
+    };
+
+    // Image library bins accept images dragged from the other image categories.
+    // The asset ID remains unchanged, so segment assignments stay intact.
+    if(kind==="images" && group){
+      bin.ondragover=e=>{
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!=="images" || this.assetDrag.sourceGroup===group)return;
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.dataTransfer)e.dataTransfer.dropEffect="move";
+        bin.classList.add("drag-over");
+      };
+      bin.ondragleave=e=>{
+        if(!bin.contains(e.relatedTarget))bin.classList.remove("drag-over");
+      };
+      bin.ondrop=e=>{
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!=="images" || this.assetDrag.sourceGroup===group)return;
+        e.preventDefault();
+        e.stopPropagation();
+        const asset=this.state.images.find(item=>String(item.id)===String(this.assetDrag.id));
+        if(!asset){this.assetDrag=null;clearMarkers();return;}
+        asset.group=group;
+        this.assetDrag=null;
+        clearMarkers();
+        this.sync();
+        this.render();
+        this.setStatus(`图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`);
+      };
+    }
+
     for(const card of bin.querySelectorAll(".m3td-asset")){
       card.ondragstart=e=>{
         if(e.target.closest?.("button,select,input")){e.preventDefault();return;}
-        this.assetDrag={kind,id:card.dataset.assetId,source:"library"};card.classList.add("dragging");
-        // Library cards are moved when reordered inside the library, but copied
-        // when assigned to one or more prompt segments.  `move` alone makes a
-        // segment's `dropEffect = "copy"` invalid, so Chromium shows drag-over
-        // feedback yet cancels the final drop.
-        e.dataTransfer.effectAllowed="copyMove";e.dataTransfer.setData("text/plain",card.dataset.assetId);
+        this.assetDrag={kind,id:card.dataset.assetId,source:"library",sourceGroup:group};
+        card.classList.add("dragging");
+        e.dataTransfer.effectAllowed="copyMove";
+        e.dataTransfer.setData("text/plain",card.dataset.assetId);
       };
       card.ondragover=e=>{
-        if(!this.assetDrag||this.assetDrag.kind!==kind||this.assetDrag.id===card.dataset.assetId)return;
-        e.preventDefault();e.dataTransfer.dropEffect="move";
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!==kind || this.assetDrag.id===card.dataset.assetId)return;
+        e.preventDefault();
+        e.stopPropagation();
+        if(e.dataTransfer)e.dataTransfer.dropEffect="move";
         const rect=card.getBoundingClientRect(),after=e.clientX>=rect.left+rect.width/2;
-        for(const other of bin.querySelectorAll(".m3td-asset"))other.classList.remove("drop-before","drop-after");
+        for(const other of this.root.querySelectorAll(".m3td-asset"))other.classList.remove("drop-before","drop-after");
         card.classList.add(after?"drop-after":"drop-before");
       };
       card.ondrop=e=>{
-        if(!this.assetDrag||this.assetDrag.kind!==kind)return;
-        e.preventDefault();const rect=card.getBoundingClientRect(),after=e.clientX>=rect.left+rect.width/2;
-        const changed=reorderById(this.state[kind],this.assetDrag.id,card.dataset.assetId,after);
-        this.assetDrag=null;clearMarkers();
-        if(changed){this.sync();this.render();this.setStatus(tr(label));}
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!==kind)return;
+        e.preventDefault();
+        e.stopPropagation();
+        const draggedId=this.assetDrag.id;
+        const targetId=card.dataset.assetId;
+        const rect=card.getBoundingClientRect(),after=e.clientX>=rect.left+rect.width/2;
+        const crossCategory=kind==="images" && this.assetDrag.sourceGroup!==group;
+        let changed=false;
+        if(crossCategory){
+          const asset=this.state.images.find(item=>String(item.id)===String(draggedId));
+          if(asset){
+            asset.group=group;
+            reorderById(this.state.images,draggedId,targetId,after);
+            changed=true;
+          }
+        }else{
+          changed=reorderById(this.state[kind],draggedId,targetId,after);
+        }
+        this.assetDrag=null;
+        clearMarkers();
+        if(changed){
+          this.sync();
+          this.render();
+          this.setStatus(crossCategory
+            ? `图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`
+            : tr(label));
+        }
       };
-      card.ondragend=()=>{this.assetDrag=null;clearMarkers();};
+      card.ondragend=()=>{
+        this.assetDrag=null;
+        clearMarkers();
+      };
     }
   }
 
