@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { createWindows, editWindow, minimumAlignedLength } from "./segment_windows.mjs";
+import { createWindows, editWindow, minimumAlignedLength, setWindowContributionDuration } from "./segment_windows.mjs";
 
 const TIMELINE_NODE_NAMES = new Set(["MiniMaxH3TimelinePlanner", "MiniMaxH3TimelineDirector"]);
 const STYLE_ID = "m3td-style";
@@ -488,7 +488,7 @@ class TimelineDirectorUI {
       const result = original?.apply(widget, args);
       if (!this._syncingGeneration) {
         const seconds = Math.max(5 / 24, num(widget.value, num(args[0], 5)));
-        if(this.hasSegmentWindows()) { this.editActiveWindow("right",this.activeWindow().startFrame+seconds*24); return result; }
+        if(this.hasSegmentWindows()) { this.state.segmentConfig.segments=setWindowContributionDuration(this.state.segmentConfig.segments,this.activeSegment||0,seconds*24); this.selectWindowGeometry(); this.sync(); this.render(); return result; }
         if (Math.abs(seconds - this.state.selection.duration) > 0.0001) {
           this.state.selection.duration = seconds;
           this.sync(false);
@@ -1753,15 +1753,15 @@ class TimelineDirectorUI {
     for(const durationInput of list.querySelectorAll("[data-segment-duration]")){
       for(const eventName of ["pointerdown","keydown","wheel"])durationInput.addEventListener(eventName,event=>event.stopPropagation());
       durationInput.onchange=()=>{
-        const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,this.state.selection.duration)),requestedFrames=Math.round(seconds*24),alignedFrames=minimumAlignedLength(requestedFrames),count=this.state.segmentConfig.count;
+        const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,this.state.selection.duration)),requestedFrames=Math.round(seconds*24),count=this.state.segmentConfig.count;
         if(!this.hasSegmentWindows()){
           const previous=this.state.segmentConfig.segments;
           this.state.segmentConfig.segments=createWindows(previous,count,Math.round(this.state.selection.duration*24));
           this.state.segmentConfig.mode="timeline";
         }
         this.activeSegment=index;
-        const segment=this.state.segmentConfig.segments[index];
-        this.editActiveWindow("right",segment.startFrame+alignedFrames);
+        this.state.segmentConfig.segments=setWindowContributionDuration(this.state.segmentConfig.segments,index,requestedFrames);
+        this.selectWindowGeometry();this.sync();this.render();
       };
     }
     for(const input of list.querySelectorAll("[data-segment-prompt]")){
