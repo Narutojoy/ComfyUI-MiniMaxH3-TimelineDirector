@@ -1731,6 +1731,8 @@ class MiniMaxH3TimelinePlanner(io.ComfyNode):
                 source_timeline_data, source_width, source_height, source_seconds,
                 target_original_index + 1,
             )
+        if unique_id is not None:
+            selected_plan["director_node_id"] = str(unique_id)
         return io.NodeOutput(
             selected_plan, _create_prompt_media_bundle(selected_plan), complete_plan
         )
