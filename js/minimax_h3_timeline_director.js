@@ -1682,6 +1682,12 @@ class TimelineDirectorUI {
         <div class="m3td-segment-bin" data-segment-drop="audios" data-segment-index="${index}"><label class="m3td-segment-bin-label">${esc(tr("segmentAudio"))}</label><div class="m3td-segment-bin-list">${segment.audios.map((id,i)=>this.segmentAssetHTML("audios",id,i,index)).join("")}</div></div>
       </div>${timelineMode?`<label class="m3td-prompt-label">${esc(tr("segmentPrompt"))}<textarea class="m3td-segment-prompt" data-segment-prompt="${index}" placeholder="${esc(tr("segmentPrompt"))}">${esc(segment.prompt||"")}</textarea></label>${index&&overlap===0?`<p>${esc(tr("segmentBoundary"))}</p>`:""}`:""}</section>`;
     }).join("");
+    for(const tab of list.querySelectorAll("[data-select-segment]")){
+      const index=num(tab.dataset.selectSegment),state=this.segmentProgress.get(index)||"pending";
+      const indicator=document.createElement("span");indicator.className="m3td-run-state "+state;
+      indicator.textContent=({pending:"·",running:"●",completed:"✓",failed:"!"})[state];
+      tab.append(indicator);
+    }
     for(const card of list.querySelectorAll("[data-segment]")){
       const index=num(card.dataset.segment),state=this.segmentProgress.get(index)||"pending";
       card.classList.toggle("is-running",state==="running");
@@ -2003,6 +2009,11 @@ class TimelineDirectorUI {
     if(repaired)this.sync(false);
     this.render();
   }
+  resetExecutionProgress() {
+    this.segmentProgress.clear();this.segmentRunActive=false;
+    const header=this.root.querySelector(".m3td-execution-status");if(header)header.textContent="";
+    this.renderSegments();
+  }
   updateExecutionProgress(payload) {
     if(!payload || !Number.isInteger(Number(payload.segment_index)))return;
     const index=Number(payload.segment_index),status=String(payload.status||"");
@@ -2054,6 +2065,11 @@ api.addEventListener("minimax_h3_timeline_preset_applied",event=>{
   }catch(error){
     console.error("[MiniMaxH3TimelineDirector] Unable to persist executed preset",error);
     node.__m3td.setStatus(tr("presetLoadFailed",{error:error.message}));
+  }
+});
+api.addEventListener("execution_start",()=>{
+  for(const node of app.graph?._nodes||[]){
+    if(node?.type==="MiniMaxH3TimelinePlanner")node.__m3td?.resetExecutionProgress();
   }
 });
 api.addEventListener("minimax_h3_timeline_segment_progress",event=>{
