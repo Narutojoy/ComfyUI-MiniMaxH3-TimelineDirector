@@ -1627,7 +1627,16 @@ class TimelineDirectorUI {
         drag.moved=true;moveEvent.preventDefault();moveEvent.stopPropagation();
         const rect=container.getBoundingClientRect(),x=Math.min(drag.startX,drag.lastX),y=Math.min(drag.startY,drag.lastY),w=Math.abs(drag.lastX-drag.startX),h=Math.abs(drag.lastY-drag.startY);
         let box=container.querySelector(".m3td-segment-box");if(!box){box=document.createElement("div");box.className="m3td-segment-box";container.appendChild(box);}
-        Object.assign(box.style,{left:(x-rect.left)+"px",top:(y-rect.top)+"px",width:w+"px",height:h+"px"});
+        // Pointer coordinates and getBoundingClientRect() are viewport CSS pixels,
+        // while absolutely positioned styles use the container's untransformed
+        // local coordinates. Compensate for the ComfyUI node/canvas transform.
+        const scaleX=rect.width/Math.max(1,container.offsetWidth),scaleY=rect.height/Math.max(1,container.offsetHeight);
+        Object.assign(box.style,{
+          left:((x-rect.left)/Math.max(.0001,scaleX))+"px",
+          top:((y-rect.top)/Math.max(.0001,scaleY))+"px",
+          width:(w/Math.max(.0001,scaleX))+"px",
+          height:(h/Math.max(.0001,scaleY))+"px"
+        });
         const hits=[...container.querySelectorAll("[data-select-segment]")].filter(button=>{const r=button.getBoundingClientRect();return r.right>=x&&r.left<=x+w&&r.bottom>=y&&r.top<=y+h;});
         const current=new Set(hits.map(button=>num(button.dataset.selectSegment)));
         this.selectedSegments=current;
