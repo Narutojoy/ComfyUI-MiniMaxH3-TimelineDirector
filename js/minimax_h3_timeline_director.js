@@ -219,12 +219,16 @@ function installStyles() {
     .m3td-segment-note { color:#7f8ba0; }
     .m3td-segment-list { display:grid; gap:7px; }
     .m3td-segment-tabs { display:flex; flex-wrap:wrap; gap:6px; }
+    .m3td-assets-categorized { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .m3td-assets-categorized .m3td-bin-title { display:flex; align-items:center; gap:6px; }
+    .m3td-assets-categorized .m3td-bin-title .m3td-btn { padding:2px 8px; font-size:11px; }
+    .m3td-assets-categorized .m3td-bin { min-width:0; }
     .m3td-segment-eye { display:inline-flex; align-items:center; justify-content:center; margin-left:5px; opacity:.78; cursor:pointer; vertical-align:middle; }
     .m3td-segment-eye:hover { opacity:1; }
     .m3td-segment-disabled { opacity:.38 !important; text-decoration:line-through; filter:saturate(.45); }
     .m3td-segment-tab-selected { outline:2px solid #f0c65a; outline-offset:1px; }
-    .m3td-segment-context-menu { position:fixed; z-index:100000; min-width:190px; padding:6px; border:1px solid #46536a; border-radius:6px; background:#171d27; box-shadow:0 8px 24px #0009; display:flex; flex-direction:column; gap:4px; }
-    .m3td-segment-context-menu button { border:0; border-radius:4px; padding:8px 10px; color:#dce6f6; background:transparent; text-align:left; cursor:pointer; }
+    .m3td-segment-context-menu { position:fixed; z-index:1000000; min-width:205px; max-width:270px; max-height:70vh; overflow:auto; padding:6px; border:1px solid #46536a; border-radius:6px; background:#171d27; box-shadow:0 8px 24px #0009; display:flex; flex-direction:column; gap:3px; }
+    .m3td-segment-context-menu button { border:0; border-radius:4px; padding:8px 10px; color:#dce6f6; background:transparent; text-align:left; cursor:pointer; white-space:normal; }
     .m3td-segment-context-menu button:hover { background:#2b394d; }
     .m3td-segment-list p { margin:4px 8px; color:var(--muted); }
     .m3td-prompt-label { display:block; padding:8px; }
@@ -375,7 +379,7 @@ function normalizeState(raw) {
   const sourceSegments=Array.isArray(rawConfig.segments)?rawConfig.segments:[];
   const migratedFromUnsegmented=rawCount<1;
   const defaultWindows=createWindows([],count,base.selection.duration*24);
-  base.segmentConfig={count,activeIndex:clamp(Math.floor(num(rawConfig.activeIndex)),0,count-1),mode:migratedFromUnsegmented||rawConfig.mode==="timeline"?"timeline":"legacy",segments:Array.from({length:count},(_,index)=>{
+  base.segmentConfig={count,activeIndex:clamp(Math.floor(num(rawConfig.activeIndex)),0,count-1),mode:migratedFromUnsegmented||rawConfig.mode==="timeline"?"timeline":"legacy",groups:Array.isArray(rawConfig.groups)?rawConfig.groups.filter(g=>g&&typeof g==="object").map(g=>({id:String(g.id||uid()),name:String(g.name||"未命名分组")})):[],segments:Array.from({length:count},(_,index)=>{
     const segment=sourceSegments[index]&&typeof sourceSegments[index]==="object"?sourceSegments[index]:{};
     const fallback=defaultWindows[index];
     return {...fallback,...segment,
@@ -418,6 +422,18 @@ class TimelineDirectorUI {
     this.segmentCountDraft = this.state.segmentConfig.count;
     this.activeSegment=this.state.segmentConfig.activeIndex||0;
     this.selectedSegments=new Set([this.activeSegment]);
+    this.segmentMenu=null;
+    this.segmentMenuCleanup=null;
+    this.segmentBoxDrag=null;
+    this.suppressSegmentClick=false;
+    this.segmentContextCapture=event=>{
+      const target=event.target instanceof Element?event.target:null;
+      const item=target?.closest("[data-select-segment],[data-segment-group]");
+      if(!item||!this.root.contains(item))return;
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
+      item.oncontextmenu?.(event);
+    };
+    document.addEventListener("contextmenu",this.segmentContextCapture,true);
     this.upscalerSelectionRepaired=false;
     this.build();
     if(this.upscalerSelectionRepaired)this.sync(false);
@@ -618,9 +634,12 @@ class TimelineDirectorUI {
           <div class="m3td-preview-note">${esc(tr("previewNote"))}</div>
         </div>
       </div>
-      <div class="m3td-assets">
-        <section class="m3td-bin"><div class="m3td-bin-title"><span>${esc(tr("independentImages",{count:0}))}</span><span>${esc(tr("dragSortPictures"))}</span></div><div class="m3td-bin-list" data-bin="images"></div></section>
-        <section class="m3td-bin"><div class="m3td-bin-title"><span>${esc(tr("independentAudio",{count:0}))}</span><span>${esc(tr("dragSortAudio"))}</span></div><div class="m3td-bin-list" data-bin="audios"></div></section>
+      <div class="m3td-assets m3td-assets-categorized">
+        <section class="m3td-bin"><div class="m3td-bin-title"><span>人物</span><button class="m3td-btn" data-action="image" data-group="character">＋</button></div><div class="m3td-bin-list" data-bin="images-character"></div></section>
+        <section class="m3td-bin"><div class="m3td-bin-title"><span>道具</span><button class="m3td-btn" data-action="image" data-group="props">＋</button></div><div class="m3td-bin-list" data-bin="images-props"></div></section>
+        <section class="m3td-bin"><div class="m3td-bin-title"><span>场景</span><button class="m3td-btn" data-action="image" data-group="scene">＋</button></div><div class="m3td-bin-list" data-bin="images-scene"></div></section>
+        <section class="m3td-bin"><div class="m3td-bin-title"><span>音频参考</span><button class="m3td-btn" data-action="audio" data-group="ref">＋</button></div><div class="m3td-bin-list" data-bin="audios-ref"></div></section>
+        <section class="m3td-bin"><div class="m3td-bin-title"><span>音乐参考</span><button class="m3td-btn" data-action="audio" data-group="music">＋</button></div><div class="m3td-bin-list" data-bin="audios-music"></div></section>
       </div>
       <div class="m3td-segments" hidden>
         <div class="m3td-segment-head"><strong>${esc(tr("assignByPrompt"))}</strong><span class="m3td-segment-note">${esc(tr("segmentNote"))}</span></div>
@@ -649,8 +668,8 @@ class TimelineDirectorUI {
       for(const event of ["pointerdown","keydown","keyup"])this.globalPromptInput.addEventListener(event,e=>e.stopPropagation());
     }
     this.root.querySelector('[data-action="video"]').onclick = () => this.root.querySelector('[data-upload="video"]').click();
-    this.root.querySelector('[data-action="image"]').onclick = () => this.root.querySelector('[data-upload="image"]').click();
-    this.root.querySelector('[data-action="audio"]').onclick = () => this.root.querySelector('[data-upload="audio"]').click();
+    this.root.querySelectorAll('[data-action="image"]').forEach(btn=>btn.onclick=()=>{this.pendingImageGroup=btn.dataset.group||"character";this.root.querySelector('[data-upload="image"]').click();});
+    this.root.querySelectorAll('[data-action="audio"]').forEach(btn=>btn.onclick=()=>{this.pendingAudioGroup=btn.dataset.group||"ref";this.root.querySelector('[data-upload="audio"]').click();});
     const importPresetButton=this.root.querySelector('[data-action="importPreset"]');
     if(importPresetButton)importPresetButton.onclick=()=>this.importConnectedPreset();
     this.root.querySelector('[data-action="split"]').onclick = () => this.splitSelected();
@@ -1322,20 +1341,35 @@ class TimelineDirectorUI {
   }
 
   renderAssets() {
-    const imageBin = this.root.querySelector('[data-bin="images"]');
-    const audioBin = this.root.querySelector('[data-bin="audios"]');
-    this.root.querySelectorAll(".m3td-bin-title span:first-child")[0].textContent = tr("independentImages",{count:this.state.images.length});
-    this.root.querySelectorAll(".m3td-bin-title span:first-child")[1].textContent = tr("independentAudio",{count:this.state.audios.length});
-    imageBin.innerHTML = this.state.images.map((a,i) => `<div class="m3td-asset" draggable="true" data-asset-id="${esc(a.id)}" data-asset-kind="images" title="${esc(tr("dragReorder"))}"><img draggable="false" src="${esc(viewURL(a.file))}"><span class="m3td-asset-tag">&lt;Picture ${i+1}&gt;</span><span class="m3td-asset-name">${esc(a.name)}</span><button type="button" draggable="false" class="m3td-asset-x" data-remove-image="${esc(a.id)}">×</button></div>`).join("");
-    audioBin.innerHTML = this.state.audios.map((a,i) => {const ordinal=this.state.audios.slice(0,i+1).filter(item=>item.audioMode!=="locked").length;return `<div class="m3td-asset audio" draggable="true" data-asset-id="${esc(a.id)}" data-asset-kind="audios" title="${esc(tr("audioModeHelp"))}"><span class="m3td-asset-tag">${a.audioMode==="locked"?esc(tr("lockedAudio")):`&lt;Audio ${ordinal}&gt;`}</span><select draggable="false" class="m3td-audio-mode ${a.audioMode==="locked"?"locked":""}" data-audio-mode="${esc(a.id)}"><option value="reference" ${a.audioMode!=="locked"?"selected":""}>${esc(tr("audioModeReference"))}</option><option value="locked" ${a.audioMode==="locked"?"selected":""}>${esc(tr("audioModeLocked"))}</option></select><span class="m3td-asset-name">${esc(a.name)}</span><button type="button" draggable="false" class="m3td-asset-x" data-remove-audio="${esc(a.id)}">×</button></div>`;}).join("");
-    for (const b of imageBin.querySelectorAll("[data-remove-image]")) {b.onpointerdown=e=>e.stopPropagation();b.onclick=e=>{e.stopPropagation();this.state.images=this.state.images.filter(a=>a.id!==b.dataset.removeImage);this.pruneSegmentAssignments();this.sync();this.render();};}
-    for (const b of audioBin.querySelectorAll("[data-remove-audio]")) {b.onpointerdown=e=>e.stopPropagation();b.onclick=e=>{e.stopPropagation();this.state.audios=this.state.audios.filter(a=>a.id!==b.dataset.removeAudio);this.pruneSegmentAssignments();this.sync();this.render();};}
-    for (const select of audioBin.querySelectorAll("[data-audio-mode]")) {
-      for(const event of ["pointerdown","click","wheel"])select.addEventListener(event,e=>e.stopPropagation());
-      select.onchange=()=>{const asset=this.state.audios.find(a=>String(a.id)===String(select.dataset.audioMode));if(!asset)return;asset.audioMode=select.value==="locked"?"locked":"reference";this.sync();this.render();this.setStatus(tr(asset.audioMode==="locked"?"audioModeLocked":"audioModeReference"));};
+    const imageBins=[["character",this.root.querySelector('[data-bin="images-character"]')],["props",this.root.querySelector('[data-bin="images-props"]')],["scene",this.root.querySelector('[data-bin="images-scene"]')]];
+    const imgHtml=(asset,index)=>`<div class="m3td-asset" draggable="true" data-asset-id="${esc(asset.id)}" data-asset-kind="images" title="${esc(tr("dragReorder"))}"><img draggable="false" src="${esc(viewURL(asset.file))}"><span class="m3td-asset-tag">&lt;Picture ${index+1}&gt;</span><div class="m3td-asset-bottom"><span class="m3td-asset-name" data-edit-asset-name="${esc(asset.id)}" data-asset-kind="images" title="双击改名" style="cursor:pointer;">${esc(asset.name)}</span><button draggable="false" class="m3td-asset-x" data-remove-image="${esc(asset.id)}">×</button></div></div>`;
+    for(const [group,bin] of imageBins){
+      bin.innerHTML=this.state.images.filter(asset=>(asset.group||"character")===group).map(imgHtml).join("");
+      for(const button of bin.querySelectorAll("[data-remove-image]"))button.onclick=event=>{event.stopPropagation();this.state.images=this.state.images.filter(asset=>asset.id!==button.dataset.removeImage);this.pruneSegmentAssignments();this.sync();this.render();};
+      this.bindAssetReorder(bin,"images","imageOrderUpdated");
     }
-    this.bindAssetReorder(imageBin,"images","imageOrderUpdated");
-    this.bindAssetReorder(audioBin,"audios","audioOrderUpdated");
+    const audioBins=[["ref",this.root.querySelector('[data-bin="audios-ref"]')],["music",this.root.querySelector('[data-bin="audios-music"]')]];
+    for(const [group,bin] of audioBins){
+      bin.innerHTML=this.state.audios.filter(asset=>(asset.audioGroup||"ref")===group).map((asset,index)=>{
+        const ordinal=this.state.audios.filter(item=>(item.audioGroup||"ref")===group&&item.audioMode!=="locked").findIndex(item=>item.id===asset.id)+1;
+        return `<div class="m3td-asset audio" draggable="true" data-asset-id="${esc(asset.id)}" data-asset-kind="audios" title="${esc(tr("audioModeHelp"))}"><select draggable="false" class="m3td-audio-mode ${asset.audioMode==="locked"?"locked":""}" data-audio-mode="${esc(asset.id)}"><option value="reference" ${asset.audioMode!=="locked"?"selected":""}>${esc(tr("audioModeReference"))}</option><option value="locked" ${asset.audioMode==="locked"?"selected":""}>${esc(tr("audioModeLocked"))}</option></select><div class="m3td-asset-bottom"><span class="m3td-asset-tag">${asset.audioMode==="locked"?esc(tr("lockedAudio")):`&lt;Audio ${ordinal}&gt;`}</span><button draggable="false" class="m3td-asset-x" data-remove-audio="${esc(asset.id)}">×</button></div><div class="m3td-audio-name" data-edit-asset-name="${esc(asset.id)}" data-asset-kind="audios" title="双击改名" style="cursor:pointer;">${esc(asset.name)}</div></div>`;
+      }).join("");
+      for(const button of bin.querySelectorAll("[data-remove-audio]"))button.onclick=event=>{event.stopPropagation();this.state.audios=this.state.audios.filter(asset=>asset.id!==button.dataset.removeAudio);this.pruneSegmentAssignments();this.sync();this.render();};
+      for(const select of bin.querySelectorAll("[data-audio-mode]")){
+        for(const eventName of ["pointerdown","click","wheel"])select.addEventListener(eventName,event=>event.stopPropagation());
+        select.onchange=()=>{const asset=this.state.audios.find(item=>String(item.id)===String(select.dataset.audioMode));if(!asset)return;asset.audioMode=select.value==="locked"?"locked":"reference";this.sync();this.render();};
+      }
+      this.bindAssetReorder(bin,"audios","audioOrderUpdated");
+    }
+    for(const nameEl of this.root.querySelectorAll("[data-edit-asset-name]")){
+      nameEl.ondblclick=event=>{
+        event.stopPropagation();const id=nameEl.dataset.editAssetName,kind=nameEl.dataset.assetKind,item=this.state[kind].find(asset=>asset.id===id);if(!item)return;
+        const oldName=item.name,input=document.createElement("input");input.value=oldName;input.style.cssText="width:100%;font-size:11px;background:#1a2a32;color:#fff;border:1px solid #69e4dc;border-radius:3px;padding:1px 4px;";
+        nameEl.replaceWith(input);input.focus();input.select();
+        const commit=()=>{const value=input.value.trim();if(value)item.name=value;this.sync();this.render();};
+        input.onblur=commit;input.onkeydown=keyEvent=>{if(keyEvent.key==="Enter")input.blur();if(keyEvent.key==="Escape"){input.value=oldName;input.blur();}};
+      };
+    }
   }
 
   bindAssetReorder(bin, kind, label) {
@@ -1418,6 +1452,48 @@ class TimelineDirectorUI {
       <button type="button" draggable="false" class="m3td-asset-x" data-remove-segment-asset="${esc(id)}">×</button></div>`;
   }
 
+  closeSegmentContextMenu() {
+    if(this.segmentMenuCleanup)this.segmentMenuCleanup();
+    this.segmentMenuCleanup=null;this.segmentMenu?.remove();this.segmentMenu=null;
+  }
+
+  createSegmentGroup(indices) {
+    const selected=[...new Set(indices)].filter(index=>this.state.segmentConfig.segments[index]);
+    if(selected.length<2){this.setStatus("至少选择两个分段才能成组");return;}
+    const name=prompt("新建分组名称",`新分组 ${(this.state.segmentConfig.groups||[]).length+1}`);
+    if(!name||!name.trim())return;
+    const group={id:uid(),name:name.trim()};
+    this.state.segmentConfig.groups=this.state.segmentConfig.groups||[];this.state.segmentConfig.groups.push(group);
+    for(const index of selected)this.state.segmentConfig.segments[index].groupId=group.id;
+    this.sync();this.render();this.setStatus(`已创建分组：${group.name}`);
+  }
+
+  bindSegmentBoxSelection(container) {
+    if(!container)return;
+    container.onpointerdown=event=>{
+      if(event.button!==0||event.target.closest("[data-toggle-segment]"))return;
+      event.stopPropagation();
+      this.segmentBoxDrag={startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,moved:false};
+      const move=moveEvent=>{
+        const drag=this.segmentBoxDrag;if(!drag)return;
+        drag.lastX=moveEvent.clientX;drag.lastY=moveEvent.clientY;
+        if(!drag.moved&&Math.hypot(drag.lastX-drag.startX,drag.lastY-drag.startY)<5)return;
+        drag.moved=true;moveEvent.preventDefault();moveEvent.stopPropagation();
+        const rect=container.getBoundingClientRect(),x=Math.min(drag.startX,drag.lastX),y=Math.min(drag.startY,drag.lastY),w=Math.abs(drag.lastX-drag.startX),h=Math.abs(drag.lastY-drag.startY);
+        let box=container.querySelector(".m3td-segment-box");if(!box){box=document.createElement("div");box.className="m3td-segment-box";container.appendChild(box);}
+        Object.assign(box.style,{left:(x-rect.left)+"px",top:(y-rect.top)+"px",width:w+"px",height:h+"px"});
+        this.selectedSegments=new Set([...container.querySelectorAll("[data-select-segment]")].filter(button=>{const r=button.getBoundingClientRect();return r.right>=x&&r.left<=x+w&&r.bottom>=y&&r.top<=y+h;}).map(button=>num(button.dataset.selectSegment)));
+      };
+      const up=()=>{
+        const drag=this.segmentBoxDrag;if(!drag)return;
+        container.querySelector(".m3td-segment-box")?.remove();this.segmentBoxDrag=null;
+        document.removeEventListener("pointermove",move,true);document.removeEventListener("pointerup",up,true);
+        if(drag.moved){this.suppressSegmentClick=true;if(this.selectedSegments.size){this.activeSegment=[...this.selectedSegments][0];this.selectWindowGeometry();}this.sync();this.render();requestAnimationFrame(()=>{this.suppressSegmentClick=false;});}
+      };
+      document.addEventListener("pointermove",move,true);document.addEventListener("pointerup",up,true);
+    };
+  }
+
   renderSegments() {
     const section=this.root.querySelector(".m3td-segments"),list=this.root.querySelector(".m3td-segment-list");
     const count=this.state.segmentConfig?.count||0;
@@ -1425,7 +1501,7 @@ class TimelineDirectorUI {
     if(count<=0){list.innerHTML="";return;}
     const timelineMode=this.hasSegmentWindows();
     section.querySelector(".m3td-segment-head strong").textContent=tr(timelineMode?"segmentTabs":"assignByPrompt");
-    const tabs=timelineMode?`<div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((s,i)=>`<button type="button" class="m3td-btn ${s.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(i)?"m3td-segment-tab-selected":""}" data-select-segment="${i}" style="border-color:hsl(${(i*97+175)%360} 75% 55%);${i===(this.activeSegment||0)?"background:#34505b":""}">${esc(tr("segmentTitle",{index:i+1}))}<span class="m3td-segment-eye" data-toggle-segment="${i}" title="${s.enabled===false?"启用该分段":"禁用该分段"}">${s.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`).join("")}</div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
+    const tabs=timelineMode?`<div class="m3td-segment-groups">${(this.state.segmentConfig.groups||[]).map(group=>`<button type="button" class="m3td-segment-group" data-segment-group="${esc(group.id)}">📁 ${esc(group.name)} (${this.state.segmentConfig.segments.filter(segment=>segment.groupId===group.id).length})</button>`).join("")}</div><div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((s,i)=>`<button type="button" class="m3td-btn ${s.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(i)?"m3td-segment-tab-selected":""}" data-select-segment="${i}" style="border-color:hsl(${(i*97+175)%360} 75% 55%);${i===(this.activeSegment||0)?"background:#34505b":""}">${esc(tr("segmentTitle",{index:i+1}))}<span class="m3td-segment-eye" data-toggle-segment="${i}" title="${s.enabled===false?"启用该分段":"禁用该分段"}">${s.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`).join("")}</div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
     list.innerHTML=tabs+this.state.segmentConfig.segments.map((segment,index)=>{
       if(timelineMode&&index!==(this.activeSegment||0))return "";
       const overlap=index?this.state.segmentConfig.segments[index-1].endFrame-segment.startFrame:0;
@@ -1439,6 +1515,7 @@ class TimelineDirectorUI {
     }).join("");
     for(const button of list.querySelectorAll("[data-select-segment]")){
       button.onclick=(event)=>{
+        if(this.suppressSegmentClick){this.suppressSegmentClick=false;return;}
         const idx=num(button.dataset.selectSegment);
         if(event.ctrlKey||event.metaKey){
           if(this.selectedSegments.has(idx))this.selectedSegments.delete(idx);else this.selectedSegments.add(idx);
@@ -1452,19 +1529,23 @@ class TimelineDirectorUI {
         this.activeSegment=idx;this.selectWindowGeometry();this.sync();this.render();
       };
       button.oncontextmenu=(event)=>{
-        event.preventDefault();
+        event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
         const idx=num(button.dataset.selectSegment);
         if(!this.selectedSegments.has(idx))this.selectedSegments=new Set([idx]);
         this.render();
         const selected=[...this.selectedSegments].filter(i=>this.state.segmentConfig.segments[i]);
+        this.closeSegmentContextMenu();
         const menu=document.createElement("div");
         menu.className="m3td-segment-context-menu";
         menu.style.left=Math.min(event.clientX,window.innerWidth-220)+"px";
         menu.style.top=Math.min(event.clientY,window.innerHeight-110)+"px";
-        menu.innerHTML=`<button type="button" data-batch-enable>启用选中 ${selected.length} 个分段</button><button type="button" data-batch-disable>禁用选中 ${selected.length} 个分段</button>`;
-        const close=()=>{menu.remove();document.removeEventListener("pointerdown",close);};
-        menu.addEventListener("pointerdown",e=>e.stopPropagation());
-        document.addEventListener("pointerdown",close);
+        menu.innerHTML=`<button type="button" data-batch-enable>启用选中 ${selected.length} 个分段</button><button type="button" data-batch-disable>禁用选中 ${selected.length} 个分段</button><button type="button" data-create-group>📁 将选中分段新建分组</button>${(this.state.segmentConfig.groups||[]).map(group=>`<button type="button" data-move-group="${esc(group.id)}">移动到：${esc(group.name)}</button>`).join("")}<button type="button" data-remove-group>移出当前分组</button>`;
+        const close=()=>this.closeSegmentContextMenu();
+        this.segmentMenu=menu;
+        menu.addEventListener("pointerdown",e=>{e.stopPropagation();e.stopImmediatePropagation?.();});
+        const outside=e=>{if(!menu.contains(e.target))close();},escape=e=>{if(e.key==="Escape")close();};
+        this.segmentMenuCleanup=()=>{document.removeEventListener("pointerdown",outside,true);document.removeEventListener("keydown",escape,true);};
+        document.addEventListener("pointerdown",outside,true);document.addEventListener("keydown",escape,true);
         menu.querySelector("[data-batch-enable]").onclick=(e)=>{
           e.stopPropagation();for(const i of selected)this.state.segmentConfig.segments[i].enabled=true;
           close();this.sync();this.render();this.setStatus(`已启用 ${selected.length} 个分段`);
@@ -1473,16 +1554,44 @@ class TimelineDirectorUI {
           e.stopPropagation();for(const i of selected)this.state.segmentConfig.segments[i].enabled=false;
           close();this.sync();this.render();this.setStatus(`已禁用 ${selected.length} 个分段`);
         };
+        menu.querySelector("[data-create-group]").onclick=e=>{e.stopPropagation();close();this.createSegmentGroup(selected);};
+        for(const moveButton of menu.querySelectorAll("[data-move-group]"))moveButton.onclick=e=>{e.stopPropagation();for(const index of selected)this.state.segmentConfig.segments[index].groupId=moveButton.dataset.moveGroup;close();this.sync();this.render();};
+        menu.querySelector("[data-remove-group]").onclick=e=>{e.stopPropagation();for(const index of selected)delete this.state.segmentConfig.segments[index].groupId;close();this.sync();this.render();};
         document.body.appendChild(menu);
       };
     }
+    for(const groupButton of list.querySelectorAll("[data-segment-group]")){
+      groupButton.onclick=()=>{const groupId=groupButton.dataset.segmentGroup,indices=this.state.segmentConfig.segments.map((segment,index)=>segment.groupId===groupId?index:-1).filter(index=>index>=0);if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}};
+      groupButton.oncontextmenu=event=>{
+        event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();this.closeSegmentContextMenu();
+        const groupId=groupButton.dataset.segmentGroup,group=this.state.segmentConfig.groups.find(item=>item.id===groupId);if(!group)return;
+        const menu=document.createElement("div");menu.className="m3td-segment-context-menu";menu.style.left=Math.min(event.clientX,window.innerWidth-230)+"px";menu.style.top=Math.min(event.clientY,window.innerHeight-110)+"px";
+        menu.innerHTML='<button type="button" data-rename-group>重命名分组</button><button type="button" data-dissolve-group>解散分组</button>';
+        const close=()=>this.closeSegmentContextMenu();this.segmentMenu=menu;
+        const outside=e=>{if(!menu.contains(e.target))close();},escape=e=>{if(e.key==="Escape")close();};
+        this.segmentMenuCleanup=()=>{document.removeEventListener("pointerdown",outside,true);document.removeEventListener("keydown",escape,true);};
+        menu.addEventListener("pointerdown",e=>{e.stopPropagation();e.stopImmediatePropagation?.();});
+        document.addEventListener("pointerdown",outside,true);document.addEventListener("keydown",escape,true);
+        menu.querySelector("[data-rename-group]").onclick=e=>{e.stopPropagation();close();const name=prompt("分组名称",group.name);if(name&&name.trim()){group.name=name.trim();this.sync();this.render();}};
+        menu.querySelector("[data-dissolve-group]").onclick=e=>{e.stopPropagation();for(const segment of this.state.segmentConfig.segments)if(segment.groupId===groupId)delete segment.groupId;this.state.segmentConfig.groups=this.state.segmentConfig.groups.filter(item=>item.id!==groupId);close();this.sync();this.render();};
+        document.body.appendChild(menu);
+      };
+    }
+    this.bindSegmentBoxSelection(list.querySelector(".m3td-segment-tabs"));
     for(const eye of list.querySelectorAll("[data-toggle-segment]"))eye.onclick=(event)=>{
-      event.preventDefault();event.stopPropagation();
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
       const idx=num(eye.dataset.toggleSegment),segment=this.state.segmentConfig.segments[idx];
       segment.enabled=segment.enabled===false?true:false;
       this.sync();this.render();
       this.setStatus(segment.enabled===false?`第${idx+1}段已禁用`:`第${idx+1}段已启用`);
     };
+    for(const durationInput of list.querySelectorAll("[data-segment-duration]")){
+      for(const eventName of ["pointerdown","keydown","wheel"])durationInput.addEventListener(eventName,event=>event.stopPropagation());
+      durationInput.onchange=()=>{
+        const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,5)),segment=this.state.segmentConfig.segments[index];
+        this.activeSegment=index;this.editActiveWindow("right",segment.startFrame+Math.round(seconds*24));
+      };
+    }
     for(const input of list.querySelectorAll("[data-segment-prompt]")){
       input.oninput=()=>{this.state.segmentConfig.segments[num(input.dataset.segmentPrompt)].prompt=input.value;this.sync();this.renderGlobalPromptState();};
       // Keep text editing inside the DOM widget under Nodes 2.0.
@@ -1672,12 +1781,12 @@ class TimelineDirectorUI {
         const clip={id:uid(),file:info.filename,name:file.name,start,duration,trimStart:0,sourceDuration:duration,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth,referenceHeight,peaks:info.peaks||[],proxy:""};
         this.state.videoClips.push(clip);this.selectedId=clip.id;
       }else if(kind==="image"){
-        const asset={id:uid(),file:info.filename,name:file.name,width:info.width||0,height:info.height||0};
+        const asset={id:uid(),file:info.filename,name:file.name,width:info.width||0,height:info.height||0,group:this.pendingImageGroup||"character"};
         this.state.images.push(asset);
         if(this.state.segmentConfig.count===1&&this.state.segmentConfig.segments[0].images.length<MAX_SEGMENT_IMAGES)this.state.segmentConfig.segments[0].images.push(asset.id);
       }else {
         if(!info.hasAudio)throw new Error(tr("noAudioTrack"));
-        const asset={id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference"};
+        const asset={id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference",audioGroup:this.pendingAudioGroup||"ref"};
         this.state.audios.push(asset);
         if(this.state.segmentConfig.count===1&&this.state.segmentConfig.segments[0].audios.length<MAX_SEGMENT_AUDIOS)this.state.segmentConfig.segments[0].audios.push(asset.id);
       }
@@ -1695,6 +1804,8 @@ class TimelineDirectorUI {
     this.render();
   }
   destroy() {
+    this.closeSegmentContextMenu();
+    document.removeEventListener("contextmenu",this.segmentContextCapture,true);
     cancelAnimationFrame(this.previewRAF);cancelAnimationFrame(this.dragRAF);cancelAnimationFrame(this.layoutRAF);this.contentResizeObserver?.disconnect();this.previewVideo?.pause();window.removeEventListener("pointermove",this.pointerMove,true);window.removeEventListener("pointerup",this.pointerUp,true);window.removeEventListener("pointercancel",this.pointerUp,true);
     this.stage?.removeEventListener("pointerdown",this.timelinePointerDown,true);
     this.root.removeEventListener("wheel",this.forwardWheel,true);
