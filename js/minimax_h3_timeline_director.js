@@ -224,7 +224,13 @@ function installStyles() {
     .m3td-segment-tabs { display:flex; flex-wrap:wrap; gap:6px; position:relative; }
     .m3td-segment-box { position:absolute; z-index:50; pointer-events:none; border:2px solid #59e5ff; background:#36cfff30; box-shadow:0 0 0 1px #07131d,0 0 14px #39dfff88; border-radius:4px; }
     .m3td-segment-tabs [data-select-segment].m3td-box-hit { filter:brightness(1.3); outline:2px solid #59e5ff; outline-offset:2px; background:#24596b !important; }
-    .m3td-assets-categorized { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .m3td-assets-categorized { display:block; width:100%; min-width:0; }
+    .m3td-audio-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-bottom:8px; }
+    .m3td-image-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .m3td-assets-group-head { display:flex; align-items:center; justify-content:space-between; min-height:28px; margin:2px 0 5px; padding:0 4px; color:#cbd6e7; border-bottom:1px solid #30394a; }
+    .m3td-assets-group-head .m3td-collapse-toggle { width:auto; font-weight:700; }
+    .m3td-audio-grid[hidden],.m3td-image-grid[hidden] { display:none; }
+    @media (max-width:680px) { .m3td-audio-grid,.m3td-image-grid { grid-template-columns:1fr; } }
     .m3td-assets-category-head { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; color:#dce6f6; font-size:12px; }
     .m3td-assets-category-head label { display:flex; align-items:center; gap:4px; color:#69e4dc; cursor:pointer; font-size:11px; }
     .m3td-assets-categorized .m3td-bin-title { display:flex; align-items:center; gap:6px; }
@@ -661,13 +667,19 @@ class TimelineDirectorUI {
         </div>
       </div>
       <div class="m3td-assets m3td-assets-categorized">
-        <div class="m3td-assets-category-head"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="assets" aria-expanded="true">图片与音频素材</button><label><input type="checkbox" data-global-apply="images"> 全局应用到所有分段</label></div>
-        <div class="m3td-assets-grid" data-collapse-panel="assets">
-        <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-character" aria-expanded="true">人物</button><button class="m3td-btn" data-action="image" data-group="character">＋</button></div><div class="m3td-bin-list" data-bin="images-character" data-collapse-panel="images-character"></div></section>
-        <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-props" aria-expanded="true">道具</button><button class="m3td-btn" data-action="image" data-group="props">＋</button></div><div class="m3td-bin-list" data-bin="images-props" data-collapse-panel="images-props"></div></section>
-        <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-scene" aria-expanded="true">场景</button><button class="m3td-btn" data-action="image" data-group="scene">＋</button></div><div class="m3td-bin-list" data-bin="images-scene" data-collapse-panel="images-scene"></div></section>
-        <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="audios-ref" aria-expanded="true">音频参考</button><button class="m3td-btn" data-action="audio" data-group="ref">＋</button></div><div class="m3td-bin-list" data-bin="audios-ref" data-collapse-panel="audios-ref"></div></section>
-        <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="audios-music" aria-expanded="true">音乐参考</button><button class="m3td-btn" data-action="audio" data-group="music">＋</button></div><div class="m3td-bin-list" data-bin="audios-music" data-collapse-panel="audios-music"></div></section>
+        <div class="m3td-assets-category-head"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="assets" aria-expanded="true">图片与音频素材</button></div>
+        <div data-collapse-panel="assets">
+          <div class="m3td-assets-group-head"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="audios" aria-expanded="true">音频素材</button></div>
+          <div class="m3td-audio-grid" data-collapse-panel="audios">
+            <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="audios-ref" aria-expanded="true">音频参考</button><button class="m3td-btn" data-action="audio" data-group="ref">＋</button></div><div class="m3td-bin-list" data-bin="audios-ref" data-collapse-panel="audios-ref"></div></section>
+            <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="audios-music" aria-expanded="true">音乐参考</button><button class="m3td-btn" data-action="audio" data-group="music">＋</button></div><div class="m3td-bin-list" data-bin="audios-music" data-collapse-panel="audios-music"></div></section>
+          </div>
+          <div class="m3td-assets-group-head"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images" aria-expanded="true">图片素材</button><label><input type="checkbox" data-global-apply="images"> 全局应用到所有分段</label></div>
+          <div class="m3td-image-grid" data-collapse-panel="images">
+            <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-character" aria-expanded="true">人物</button><button class="m3td-btn" data-action="image" data-group="character">＋</button></div><div class="m3td-bin-list" data-bin="images-character" data-collapse-panel="images-character"></div></section>
+            <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-props" aria-expanded="true">道具</button><button class="m3td-btn" data-action="image" data-group="props">＋</button></div><div class="m3td-bin-list" data-bin="images-props" data-collapse-panel="images-props"></div></section>
+            <section class="m3td-bin"><div class="m3td-bin-title"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="images-scene" aria-expanded="true">场景</button><button class="m3td-btn" data-action="image" data-group="scene">＋</button></div><div class="m3td-bin-list" data-bin="images-scene" data-collapse-panel="images-scene"></div></section>
+          </div>
         </div>
       </div>
       <div class="m3td-segments" hidden>
@@ -1545,7 +1557,6 @@ class TimelineDirectorUI {
       if(event.button!==0||event.target.closest("[data-toggle-segment]"))return;
       event.stopPropagation();
       this.segmentBoxDrag={startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,moved:false,original:new Set(this.selectedSegments||[])};
-      container.setPointerCapture?.(event.pointerId);
       const move=moveEvent=>{
         const drag=this.segmentBoxDrag;if(!drag)return;
         drag.lastX=moveEvent.clientX;drag.lastY=moveEvent.clientY;
