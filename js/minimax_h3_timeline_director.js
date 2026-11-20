@@ -220,6 +220,8 @@ function installStyles() {
     .m3td-segment-list { display:grid; gap:7px; }
     .m3td-segment-tabs { display:flex; flex-wrap:wrap; gap:6px; }
     .m3td-assets-categorized { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .m3td-assets-category-head { grid-column:1/-1; display:flex; align-items:center; justify-content:space-between; color:#dce6f6; font-size:12px; }
+    .m3td-assets-category-head label { display:flex; align-items:center; gap:4px; color:#69e4dc; cursor:pointer; font-size:11px; }
     .m3td-assets-categorized .m3td-bin-title { display:flex; align-items:center; gap:6px; }
     .m3td-assets-categorized .m3td-bin-title .m3td-btn { padding:2px 8px; font-size:11px; }
     .m3td-assets-categorized .m3td-bin { min-width:0; }
@@ -635,6 +637,7 @@ class TimelineDirectorUI {
         </div>
       </div>
       <div class="m3td-assets m3td-assets-categorized">
+        <div class="m3td-assets-category-head"><strong>图片素材</strong><label><input type="checkbox" data-global-apply="images"> 全局应用到所有分段</label></div>
         <section class="m3td-bin"><div class="m3td-bin-title"><span>人物</span><button class="m3td-btn" data-action="image" data-group="character">＋</button></div><div class="m3td-bin-list" data-bin="images-character"></div></section>
         <section class="m3td-bin"><div class="m3td-bin-title"><span>道具</span><button class="m3td-btn" data-action="image" data-group="props">＋</button></div><div class="m3td-bin-list" data-bin="images-props"></div></section>
         <section class="m3td-bin"><div class="m3td-bin-title"><span>场景</span><button class="m3td-btn" data-action="image" data-group="scene">＋</button></div><div class="m3td-bin-list" data-bin="images-scene"></div></section>
@@ -673,6 +676,13 @@ class TimelineDirectorUI {
     const importPresetButton=this.root.querySelector('[data-action="importPreset"]');
     if(importPresetButton)importPresetButton.onclick=()=>this.importConnectedPreset();
     this.root.querySelector('[data-action="split"]').onclick = () => this.splitSelected();
+    const globalApplyImages=this.root.querySelector('[data-global-apply="images"]');
+    if(globalApplyImages)globalApplyImages.onchange=()=>{
+      if(!globalApplyImages.checked)return;
+      const ids=this.state.images.map(asset=>asset.id).slice(0,MAX_SEGMENT_IMAGES);
+      this.state.segmentConfig.segments.forEach(segment=>{segment.images=ids.slice();});
+      this.sync();this.render();this.setStatus("已将图片素材应用到所有分段");
+    };
     this.root.querySelector('[data-action="delete"]').onclick = () => this.deleteSelected();
     this.root.querySelector('[data-action="fit"]').onclick = () => this.fitTimeline();
     this.root.querySelector('[data-action="fitGap"]').onclick = () => this.fitSelectionToNearestGap();
