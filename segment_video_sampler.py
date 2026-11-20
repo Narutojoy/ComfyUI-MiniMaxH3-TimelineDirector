@@ -29,6 +29,7 @@ from .minimax_h3_finite_segments import (
     _finite_video_audio_muted,
     _locked_audio_interval,
     _require_finite_plan,
+    _send_timeline_segment_progress,
     _selflift_settings,
     _silent_audio_interval,
 )
@@ -195,6 +196,7 @@ class MiniMaxH3SegmentVideoArchive(io.ComfyNode):
             merged_audio=merged_audio,
             written_frames=written + int(current.shape[0]),
         )
+        _send_timeline_segment_progress(finite, index, "completed")
         del current, images
         gc.collect()
         if torch.cuda.is_available():
