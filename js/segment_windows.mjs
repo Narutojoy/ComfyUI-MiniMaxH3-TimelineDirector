@@ -5,6 +5,11 @@ export function alignedLength(frames, minimum = 5) {
   const lower = 5 + 17 * Math.max(0, Math.ceil((minimum - 5) / 17));
   return Math.min(MAX_LENGTH, Math.max(lower, 5 + 17 * Math.max(0, Math.round((frames - 5) / 17))));
 }
+// For explicit duration input, always round upward to the next valid H3 frame length.
+export function minimumAlignedLength(frames, minimum = 5) {
+  const lower = 5 + 17 * Math.max(0, Math.ceil((minimum - 5) / 17));
+  return Math.min(MAX_LENGTH, Math.max(lower, 5 + 17 * Math.max(0, Math.ceil((frames - 5) / 17))));
+}
 export function nearestOverlap(frames, maximum) {
   const choices = [0, 1, ...Array.from({length:Math.max(0, Math.floor((maximum - 5) / 17) + 1)}, (_,i)=>5+17*i)]
     .filter(n=>n<=maximum);

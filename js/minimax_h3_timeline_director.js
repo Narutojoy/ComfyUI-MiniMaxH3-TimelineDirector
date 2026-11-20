@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { createWindows, editWindow } from "./segment_windows.mjs";
+import { createWindows, editWindow, minimumAlignedLength } from "./segment_windows.mjs";
 
 const TIMELINE_NODE_NAMES = new Set(["MiniMaxH3TimelinePlanner", "MiniMaxH3TimelineDirector"]);
 const STYLE_ID = "m3td-style";
@@ -252,12 +252,12 @@ function installStyles() {
     .m3td-window { background:transparent; }
     .m3td-window.active { background:#1b9a9420; }
     .m3td-segment { min-width:0; border:1px solid #313a4c; border-radius:6px; overflow:hidden; background:#141a23; }
-    .m3td-segment-title { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:32px; padding:5px 8px;
+    .m3td-segment-title { display:flex; align-items:center; justify-content:flex-start; gap:10px; min-height:32px; padding:5px 8px;
       color:#dce6f6; background:#202735; border-bottom:1px solid #30394a; }
     .m3td-segment-title strong { cursor:text; }
-    .m3td-segment-duration { display:inline-flex; align-items:center; gap:5px; margin-left:auto; color:#9eacc1; white-space:nowrap; }
+    .m3td-segment-duration { display:inline-flex; align-items:center; gap:5px; margin-left:12px; color:#9eacc1; white-space:nowrap; flex:0 0 auto; }
     .m3td-segment-duration input { width:68px; height:23px; padding:2px 5px; color:#e8f5ff; background:#101722; border:1px solid #4a6079; border-radius:4px; font:inherit; }
-    .m3td-segment-title .m3td-segment-timing { margin-left:8px; color:#a8b5c9; font-size:11px; white-space:nowrap; }
+    .m3td-segment-title .m3td-segment-timing { margin-left:auto; color:#a8b5c9; font-size:11px; white-space:nowrap; }
     .m3td-section-bar { display:flex; align-items:center; min-height:28px; padding:3px 8px; background:#1b2230; border-bottom:1px solid #30394a; }
     .m3td-collapse-toggle { display:flex; align-items:center; gap:7px; width:100%; padding:3px 2px; border:0; color:#dce6f6; background:transparent; text-align:left; font:inherit; cursor:pointer; }
     .m3td-collapse-toggle::before { content:"▾"; color:#7f9bb9; }
@@ -1596,7 +1596,7 @@ class TimelineDirectorUI {
       const overlap=index?this.state.segmentConfig.segments[index-1].endFrame-segment.startFrame:0;
       const timing=timelineMode?tr("segmentTiming",{start:(segment.startFrame/24).toFixed(3),end:(segment.endFrame/24).toFixed(3),frames:segment.endFrame-segment.startFrame,overlap}):tr("segmentPromptMatch",{index:index+1});
       return `<section class="m3td-segment" data-segment="${index}">
-      <div class="m3td-segment-title"><strong data-edit-segment-name="${index}" title="双击修改分段名称">${esc(segmentLabel(segment,index))}</strong><label class="m3td-segment-duration">时长 <input type="number" min="${(5/24).toFixed(3)}" step="0.04" value="${(timelineMode?(segment.endFrame-segment.startFrame)/24:this.state.selection.duration).toFixed(2)}" data-segment-duration="${index}"> 秒</label>${timelineMode?`<span class="m3td-segment-timing">${esc(timing)}</span>`:`<span>${esc(timing)}</span>`}</div>
+      <div class="m3td-segment-title"><strong data-edit-segment-name="${index}" title="双击修改分段名称">${esc(segmentLabel(segment,index))}</strong><label class="m3td-segment-duration">时长 <input type="number" min="${(5/24).toFixed(3)}" step="0.04" value="${(timelineMode?(segment.endFrame-segment.startFrame)/24:this.state.selection.duration).toFixed(2)}" data-segment-duration="${index}"> 秒</label>${`<span class="m3td-segment-timing">${esc(timing)}</span>`}</div>
       <div class="m3td-segment-bins">
         <div class="m3td-segment-bin" data-segment-drop="images" data-segment-index="${index}"><label class="m3td-segment-bin-label">${esc(tr("segmentImages"))}</label><div class="m3td-segment-bin-list">${segment.images.map((id,i)=>this.segmentAssetHTML("images",id,i,index)).join("")}</div></div>
         <div class="m3td-segment-bin" data-segment-drop="audios" data-segment-index="${index}"><label class="m3td-segment-bin-label">${esc(tr("segmentAudio"))}</label><div class="m3td-segment-bin-list">${segment.audios.map((id,i)=>this.segmentAssetHTML("audios",id,i,index)).join("")}</div></div>
@@ -1692,7 +1692,7 @@ class TimelineDirectorUI {
     for(const durationInput of list.querySelectorAll("[data-segment-duration]")){
       for(const eventName of ["pointerdown","keydown","wheel"])durationInput.addEventListener(eventName,event=>event.stopPropagation());
       durationInput.onchange=()=>{
-        const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,this.state.selection.duration)),count=this.state.segmentConfig.count;
+        const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,this.state.selection.duration)),requestedFrames=Math.round(seconds*24),alignedFrames=minimumAlignedLength(requestedFrames),count=this.state.segmentConfig.count;
         if(!this.hasSegmentWindows()){
           const previous=this.state.segmentConfig.segments;
           this.state.segmentConfig.segments=createWindows(previous,count,Math.round(this.state.selection.duration*24));
@@ -1700,7 +1700,7 @@ class TimelineDirectorUI {
         }
         this.activeSegment=index;
         const segment=this.state.segmentConfig.segments[index];
-        this.editActiveWindow("right",segment.startFrame+Math.round(seconds*24));
+        this.editActiveWindow("right",segment.startFrame+alignedFrames);
       };
     }
     for(const input of list.querySelectorAll("[data-segment-prompt]")){
