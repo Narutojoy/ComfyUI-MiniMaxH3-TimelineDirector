@@ -26,6 +26,23 @@ export function createWindows(previous, count, defaultFrames) {
   }
   return result;
 }
+// Set the requested NEW content duration. The incoming overlap is added to it,
+// then the complete H3 window is rounded upward to a valid frame length.
+export function editWindowDuration(windows, index, contentFrames) {
+  const result=windows.map(s=>({...s})), s=result[index], prev=result[index-1], next=result[index+1];
+  if(!s)return result;
+  const oldEnd=s.endFrame;
+  const incoming=prev?Math.max(0,prev.endFrame-s.startFrame):0;
+  const outgoing=next?Math.max(0,s.endFrame-next.startFrame):0;
+  const requested=Math.max(5,Math.round(contentFrames));
+  const totalLength=minimumAlignedLength(incoming+requested,Math.max(incoming,outgoing)+1);
+  s.endFrame=s.startFrame+totalLength;
+  const delta=s.endFrame-oldEnd;
+  // Ripple later windows while preserving their durations and seam overlaps.
+  for(let i=index+1;i<result.length;i++){result[i].startFrame+=delta;result[i].endFrame+=delta;}
+  return result;
+}
+
 export function editWindow(windows, index, mode, frame) {
   const result=windows.map(s=>({...s})), s=result[index], prev=result[index-1], next=result[index+1];
   if(!s)return result;
