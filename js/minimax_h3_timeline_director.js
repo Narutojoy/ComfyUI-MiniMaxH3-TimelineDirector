@@ -267,6 +267,14 @@ function installStyles() {
     .m3td-resize-grip { display:flex; justify-content:center; align-items:center; height:12px; border-top:1px solid #30394a; color:#6f819b; cursor:ns-resize; touch-action:none; background:#151b25; }
     .m3td-resize-grip::after { content:""; width:42px; height:3px; border-top:1px solid #70819a; border-bottom:1px solid #70819a; }
     .m3td-segment-title small { color:#7f8ba0; }
+    .m3td-run-state { display:inline-flex; align-items:center; gap:4px; margin-left:7px; font-size:10px; font-weight:700; white-space:nowrap; }
+    .m3td-run-state.pending { color:#8792a4; }
+    .m3td-run-state.running { color:#55b8ff; }
+    .m3td-run-state.completed { color:#63cb8b; }
+    .m3td-run-state.failed { color:#ff6d75; }
+    .m3td-segment.is-running { border-color:#399bd8; box-shadow:0 0 0 1px #399bd866; }
+    .m3td-segment.is-completed { border-color:#3b9b67; }
+    .m3td-segment.is-failed { border-color:#c54e58; }
     .m3td-segment-bins { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:6px; padding:6px; }
     .m3td-segment-bin { min-width:0; min-height:68px; padding:4px; border:1px dashed #3a465b; border-radius:5px;
       background:#101620; }
@@ -449,6 +457,8 @@ class TimelineDirectorUI {
     this.segmentCountDraft = this.state.segmentConfig.count;
     this.activeSegment=this.state.segmentConfig.activeIndex||0;
     this.selectedSegments=new Set([this.activeSegment]);
+    this.segmentProgress=new Map();
+    this.segmentRunActive=false;
     this.collapsedSections=new Set();
     const storedPanelHeight=num(this.node.properties?.m3tdPanelHeight,0);
     this.panelHeight=storedPanelHeight>0?clamp(storedPanelHeight,420,2400):0;
@@ -633,7 +643,7 @@ class TimelineDirectorUI {
         ${this.isPlanner?`<button class="m3td-btn" data-action="importPreset">${esc(tr("importPreset"))}</button>`:""}
         <button class="m3td-btn" data-action="split">${esc(tr("splitAtPlayhead"))}</button>
         <button class="m3td-btn danger" data-action="delete">${esc(tr("deleteClip"))}</button>
-        <span class="m3td-spacer"></span><span class="m3td-status">${esc(tr("ready"))}</span>
+        <span class="m3td-spacer"></span><span class="m3td-execution-status" aria-live="polite"></span><span class="m3td-status">${esc(tr("ready"))}</span>
         <span class="m3td-progress"><i></i></span>
       </div>
       <div class="m3td-section-bar"><button type="button" class="m3td-collapse-toggle" data-collapse-toggle="settings" aria-expanded="true">设置与时间轴参数</button></div>
@@ -1672,6 +1682,15 @@ class TimelineDirectorUI {
         <div class="m3td-segment-bin" data-segment-drop="audios" data-segment-index="${index}"><label class="m3td-segment-bin-label">${esc(tr("segmentAudio"))}</label><div class="m3td-segment-bin-list">${segment.audios.map((id,i)=>this.segmentAssetHTML("audios",id,i,index)).join("")}</div></div>
       </div>${timelineMode?`<label class="m3td-prompt-label">${esc(tr("segmentPrompt"))}<textarea class="m3td-segment-prompt" data-segment-prompt="${index}" placeholder="${esc(tr("segmentPrompt"))}">${esc(segment.prompt||"")}</textarea></label>${index&&overlap===0?`<p>${esc(tr("segmentBoundary"))}</p>`:""}`:""}</section>`;
     }).join("");
+    for(const card of list.querySelectorAll("[data-segment]")){
+      const index=num(card.dataset.segment),state=this.segmentProgress.get(index)||"pending";
+      card.classList.toggle("is-running",state==="running");
+      card.classList.toggle("is-completed",state==="completed");
+      card.classList.toggle("is-failed",state==="failed");
+      const indicator=document.createElement("span");indicator.className="m3td-run-state "+state;
+      indicator.textContent=({pending:"等待",running:"处理中",completed:"已完成",failed:"失败"})[state];
+      card.querySelector(".m3td-segment-title strong")?.after(indicator);
+    }
     for(const button of list.querySelectorAll("[data-select-segment]")){
       button.onclick=(event)=>{
         if(this.suppressSegmentClick){this.suppressSegmentClick=false;return;}
@@ -1984,6 +2003,30 @@ class TimelineDirectorUI {
     if(repaired)this.sync(false);
     this.render();
   }
+  updateExecutionProgress(payload) {
+    if(!payload || !Number.isInteger(Number(payload.segment_index)))return;
+    const index=Number(payload.segment_index),status=String(payload.status||"");
+    if(status==="running"&&!this.segmentRunActive){this.segmentProgress.clear();this.segmentRunActive=true;}
+    if(!["running","completed","failed"].includes(status))return;
+    this.segmentProgress.set(index,status);
+    const labels={running:"正在处理",completed:"处理完成",failed:"处理失败"};
+    const total=Math.max(1,Number(payload.segment_count)||this.state.segmentConfig.count||1);
+    const header=this.root.querySelector(".m3td-execution-status");
+    if(header)header.textContent=labels[status]+"：第 "+(index+1)+" / "+total+" 段"+(payload.error?"（"+payload.error+"）":"");
+    this.renderSegments();
+  }
+
+  markExecutionFailed() {
+    if(!this.segmentRunActive)return;
+    const active=[...this.segmentProgress.entries()].filter(([,status])=>status==="running").map(([index])=>index);
+    if(active.length){
+      for(const index of active)this.segmentProgress.set(index,"failed");
+      const header=this.root.querySelector(".m3td-execution-status");
+      if(header)header.textContent="处理失败：第 "+(active[active.length-1]+1)+" 段";
+      this.renderSegments();
+    }
+    this.segmentRunActive=false;
+  }
   destroy() {
     this.closeSegmentContextMenu();
     document.removeEventListener("contextmenu",this.segmentContextCapture,true);
@@ -2011,6 +2054,20 @@ api.addEventListener("minimax_h3_timeline_preset_applied",event=>{
   }catch(error){
     console.error("[MiniMaxH3TimelineDirector] Unable to persist executed preset",error);
     node.__m3td.setStatus(tr("presetLoadFailed",{error:error.message}));
+  }
+});
+api.addEventListener("minimax_h3_timeline_segment_progress",event=>{
+  const payload=event.detail;
+  if(!payload?.node_id)return;
+  const numericId=Number(payload.node_id);
+  const node=app.graph?.getNodeById?.(payload.node_id) ?? (Number.isFinite(numericId)?app.graph?.getNodeById?.(numericId):null);
+  if(node?.type!=="MiniMaxH3TimelinePlanner"||!node.__m3td)return;
+  node.__m3td.updateExecutionProgress(payload);
+});
+
+api.addEventListener("execution_error",()=>{
+  for(const node of app.graph?._nodes||[]){
+    if(node?.type==="MiniMaxH3TimelinePlanner")node.__m3td?.markExecutionFailed();
   }
 });
 
