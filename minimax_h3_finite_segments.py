@@ -373,6 +373,8 @@ def _prepare_finite_plan(
             1 for segment in timeline_segments
             if isinstance(segment, dict) and segment.get("enabled") is not False
         )
+        if configured_count == 0:
+            raise ValueError("All timeline segments are disabled; enable at least one segment before expanding.")
     if configured_count > 0 and configured_count != count:
         raise ValueError(
             f"The material planner has {configured_count} segments but finite expansion requests {count}; keep them identical"
