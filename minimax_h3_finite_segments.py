@@ -366,6 +366,13 @@ def _prepare_finite_plan(
     source = _require_timeline_plan(plan)
     count = int(segment_count)
     configured_count = int(source.get("segment_count") or 0)
+    timeline_config = source.get("timeline", {}).get("segmentConfig", {})
+    timeline_segments = timeline_config.get("segments", [])
+    if timeline_config.get("mode") == "timeline" and int(timeline_config.get("count", 0)) > 0:
+        configured_count = sum(
+            1 for segment in timeline_segments
+            if isinstance(segment, dict) and segment.get("enabled") is not False
+        )
     if configured_count > 0 and configured_count != count:
         raise ValueError(
             f"The material planner has {configured_count} segments but finite expansion requests {count}; keep them identical"
@@ -397,7 +404,7 @@ def _prepare_finite_plan(
 
 
 def _prepare_timeline_segments(source):
-    """Compile the planner's frame windows without changing their visible geometry."""
+    """Compile enabled planner windows without changing their visible geometry."""
     source = _require_timeline_plan(source)
     if source.get("prompt_index") is not None:
         raise ValueError("Disconnect Prompt Index when generating all timeline segments")
@@ -407,9 +414,7 @@ def _prepare_timeline_segments(source):
     global_prompt = str(source["timeline"].get("globalPrompt") or "").strip()
 
     # The Material Planner is also the single-segment text-to-video planner.
-    # With no windows, its current GEN selection becomes one finite segment;
-    # the encoder created inside Finite Segment Sampling already knows how to
-    # create an empty H3 AV latent when the plan contains no reference media.
+    # With no windows, its current GEN selection becomes one finite segment.
     if count == 0:
         if not global_prompt:
             raise ValueError("Enter a Global Prompt in the Material Planner")
@@ -434,52 +439,70 @@ def _prepare_timeline_segments(source):
         raise ValueError("Click Update segments in the Material Planner before generating")
     if len(segments) != count:
         raise ValueError("The segment count does not match the timeline windows")
-    local_prompts = [str(segment.get("prompt") or "").strip() for segment in segments]
+
+    # enabled is opt-out: old workflows without the field stay enabled.
+    active_segments = [
+        (original_index, segment)
+        for original_index, segment in enumerate(segments)
+        if isinstance(segment, dict) and segment.get("enabled") is not False
+    ]
+    if not active_segments:
+        raise ValueError("All timeline segments are disabled; enable at least one segment before generating.")
+
+    local_prompts = [str(segment.get("prompt") or "").strip() for _, segment in active_segments]
     if any(local_prompts):
         if not all(local_prompts):
-            missing = ", ".join(str(index + 1) for index, prompt in enumerate(local_prompts) if not prompt)
+            missing = ", ".join(
+                str(original_index + 1)
+                for (original_index, _segment), prompt in zip(active_segments, local_prompts)
+                if not prompt
+            )
             raise ValueError(
-                "Segment prompt mode is active because at least one segment has a prompt; "
-                f"enter prompts for every segment (missing: {missing})"
+                "Segment prompt mode is active because at least one enabled segment has a prompt; "
+                f"enter prompts for every enabled segment (missing: {missing})"
             )
         resolved_prompts = local_prompts
     else:
         if not global_prompt:
-            raise ValueError("Enter a Global Prompt in the Material Planner, or enter a prompt for every segment")
-        resolved_prompts = [global_prompt] * len(segments)
+            raise ValueError("Enter a Global Prompt in the Material Planner, or enter a prompt for every enabled segment")
+        resolved_prompts = [global_prompt] * len(active_segments)
 
     plans, prompts, overlaps, lengths = [], [], [], []
-    previous_start = previous_end = 0
-    for index, segment in enumerate(segments):
+    previous_start = previous_end = None
+    for active_index, (original_index, segment) in enumerate(active_segments):
         start, end = segment.get("startFrame"), segment.get("endFrame")
         if type(start) is not int or type(end) is not int:
-            raise ValueError(f"Segment {index + 1} requires integer frame boundaries")
+            raise ValueError(f"Segment {original_index + 1} requires integer frame boundaries")
         length = end - start
         if start < 0 or length < 5 or (length - 5) % 17 or length > 3592:
-            raise ValueError(f"Segment {index + 1} length must be 5 + 17*n frames (up to 150 seconds)")
-        overlap = previous_end - start if index else 0
-        if (not index and start != 0) or (index and (
-            start <= previous_start or end <= previous_end or overlap < 0
+            raise ValueError(f"Segment {original_index + 1} length must be 5 + 17*n frames (up to 150 seconds)")
+        overlap = max(0, previous_end - start) if previous_end is not None else 0
+        if previous_start is not None and (
+            start <= previous_start or end <= previous_end
             or overlap >= min(length, lengths[-1])
             or (overlap and _valid_guide_frames(overlap) != overlap)
-        )):
-            raise ValueError(f"Segment {index + 1} must advance in time without gaps and use an H3-aligned overlap")
-        plan = _plan_for_segment(source, index + 1)
+        ):
+            raise ValueError(
+                f"Enabled segment {original_index + 1} must advance in time and use an H3-aligned overlap"
+            )
+        plan = _plan_for_segment(source, original_index + 1)
         plan["timeline"]["selection"] = {"start": start / H3_FPS, "duration": length / H3_FPS}
         plan["generation_seconds"], plan["length"] = length / H3_FPS, length
         plan["timeline"]["segmentConfig"] = {"count": 0, "segments": []}
-        # Selected audio is local to this segment (short timbre references remain reusable).
+        # Selected audio and images are local to the original segment.
         plans.append(plan)
-        prompts.append(resolved_prompts[index])
+        prompts.append(resolved_prompts[active_index])
         overlaps.append(overlap)
         lengths.append(length)
         previous_start, previous_end = start, end
+
+    target_output_frames = sum(lengths) - sum(overlaps)
     return {
         "type": "minimax_h3_finite_segment_plan", "version": 3,
         "mode": "timeline_segments", "source_plan": source,
         "segment_count": len(plans), "segment_plans": plans, "prompts": prompts,
         "overlap_frames": 0, "segment_overlaps": overlaps,
-        "segment_lengths": lengths, "target_output_frames": previous_end,
+        "segment_lengths": lengths, "target_output_frames": target_output_frames,
         "second_pass": bool(source["timeline"].get("secondPass")),
         "second_pass_model": str(source["timeline"].get("secondPassModel") or ""),
         "second_pass_high_steps": source["timeline"].get("secondPassHighSteps"),

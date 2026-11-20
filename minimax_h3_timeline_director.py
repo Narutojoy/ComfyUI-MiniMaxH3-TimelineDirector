@@ -1701,18 +1701,33 @@ class MiniMaxH3TimelinePlanner(io.ComfyNode):
                     payload,
                     getattr(PromptServer.instance, "client_id", None),
                 )
-        # The sampler validates prompts only when this output is actually used.
-        # Existing single-segment encoder/Omni workflows remain usable while editing.
+        # Disabled segments remain in the saved timeline but are omitted from
+        # prompt-index iteration. Prompt Index is zero-based over enabled segments.
         selected_plan = complete_plan
         config = complete_plan["timeline"].get("segmentConfig", {})
+        segments = config.get("segments", [])
+        active_segments = [
+            (index, segment) for index, segment in enumerate(segments)
+            if isinstance(segment, dict) and segment.get("enabled") is not False
+        ]
+        timeline_segment_mode = config.get("mode") == "timeline" and int(config.get("count", 0)) > 0
+        if timeline_segment_mode and not active_segments:
+            raise ValueError("All timeline segments are disabled; enable at least one segment before generating.")
+        target_original_index = None
         if prompt_index is not None:
-            selected_plan = _create_timeline_plan(
-                source_timeline_data, source_width, source_height, source_seconds, prompt_index,
+            active_index = max(0, int(prompt_index))
+            if active_index < len(active_segments):
+                target_original_index = active_segments[active_index][0]
+        elif timeline_segment_mode:
+            active_ui_index = int(config.get("activeIndex", 0))
+            enabled_indices = {index for index, _segment in active_segments}
+            target_original_index = (
+                active_ui_index if active_ui_index in enabled_indices else active_segments[0][0]
             )
-        elif config.get("mode") == "timeline" and int(config.get("count", 0)) > 0:
+        if target_original_index is not None:
             selected_plan = _create_timeline_plan(
                 source_timeline_data, source_width, source_height, source_seconds,
-                int(config.get("activeIndex", 0)) + 1,
+                target_original_index + 1,
             )
         return io.NodeOutput(
             selected_plan, _create_prompt_media_bundle(selected_plan), complete_plan

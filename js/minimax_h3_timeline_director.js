@@ -219,6 +219,13 @@ function installStyles() {
     .m3td-segment-note { color:#7f8ba0; }
     .m3td-segment-list { display:grid; gap:7px; }
     .m3td-segment-tabs { display:flex; flex-wrap:wrap; gap:6px; }
+    .m3td-segment-eye { display:inline-flex; align-items:center; justify-content:center; margin-left:5px; opacity:.78; cursor:pointer; vertical-align:middle; }
+    .m3td-segment-eye:hover { opacity:1; }
+    .m3td-segment-disabled { opacity:.38 !important; text-decoration:line-through; filter:saturate(.45); }
+    .m3td-segment-tab-selected { outline:2px solid #f0c65a; outline-offset:1px; }
+    .m3td-segment-context-menu { position:fixed; z-index:100000; min-width:190px; padding:6px; border:1px solid #46536a; border-radius:6px; background:#171d27; box-shadow:0 8px 24px #0009; display:flex; flex-direction:column; gap:4px; }
+    .m3td-segment-context-menu button { border:0; border-radius:4px; padding:8px 10px; color:#dce6f6; background:transparent; text-align:left; cursor:pointer; }
+    .m3td-segment-context-menu button:hover { background:#2b394d; }
     .m3td-segment-list p { margin:4px 8px; color:var(--muted); }
     .m3td-prompt-label { display:block; padding:8px; }
     .m3td-segment-prompt { display:block; box-sizing:border-box; width:100%; height:180px; margin-top:5px;
@@ -410,6 +417,7 @@ class TimelineDirectorUI {
     this.previewClipId = null;
     this.segmentCountDraft = this.state.segmentConfig.count;
     this.activeSegment=this.state.segmentConfig.activeIndex||0;
+    this.selectedSegments=new Set([this.activeSegment]);
     this.upscalerSelectionRepaired=false;
     this.build();
     if(this.upscalerSelectionRepaired)this.sync(false);
@@ -1417,7 +1425,7 @@ class TimelineDirectorUI {
     if(count<=0){list.innerHTML="";return;}
     const timelineMode=this.hasSegmentWindows();
     section.querySelector(".m3td-segment-head strong").textContent=tr(timelineMode?"segmentTabs":"assignByPrompt");
-    const tabs=timelineMode?`<div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((s,i)=>`<button type="button" class="m3td-btn" data-select-segment="${i}" style="border-color:hsl(${(i*97+175)%360} 75% 55%);${i===(this.activeSegment||0)?"background:#34505b":""}">${esc(tr("segmentTitle",{index:i+1}))}</button>`).join("")}</div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
+    const tabs=timelineMode?`<div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((s,i)=>`<button type="button" class="m3td-btn ${s.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(i)?"m3td-segment-tab-selected":""}" data-select-segment="${i}" style="border-color:hsl(${(i*97+175)%360} 75% 55%);${i===(this.activeSegment||0)?"background:#34505b":""}">${esc(tr("segmentTitle",{index:i+1}))}<span class="m3td-segment-eye" data-toggle-segment="${i}" title="${s.enabled===false?"启用该分段":"禁用该分段"}">${s.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`).join("")}</div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
     list.innerHTML=tabs+this.state.segmentConfig.segments.map((segment,index)=>{
       if(timelineMode&&index!==(this.activeSegment||0))return "";
       const overlap=index?this.state.segmentConfig.segments[index-1].endFrame-segment.startFrame:0;
@@ -1429,8 +1437,51 @@ class TimelineDirectorUI {
         <div class="m3td-segment-bin" data-segment-drop="audios" data-segment-index="${index}"><label class="m3td-segment-bin-label">${esc(tr("segmentAudio"))}</label><div class="m3td-segment-bin-list">${segment.audios.map((id,i)=>this.segmentAssetHTML("audios",id,i,index)).join("")}</div></div>
       </div>${timelineMode?`<label class="m3td-prompt-label">${esc(tr("segmentPrompt"))}<textarea class="m3td-segment-prompt" data-segment-prompt="${index}" placeholder="${esc(tr("segmentPrompt"))}">${esc(segment.prompt||"")}</textarea></label>${index&&overlap===0?`<p>${esc(tr("segmentBoundary"))}</p>`:""}`:""}</section>`;
     }).join("");
-    for(const button of list.querySelectorAll("[data-select-segment]"))button.onclick=()=>{
-      this.activeSegment=num(button.dataset.selectSegment);this.selectWindowGeometry();this.sync();this.render();
+    for(const button of list.querySelectorAll("[data-select-segment]")){
+      button.onclick=(event)=>{
+        const idx=num(button.dataset.selectSegment);
+        if(event.ctrlKey||event.metaKey){
+          if(this.selectedSegments.has(idx))this.selectedSegments.delete(idx);else this.selectedSegments.add(idx);
+          if(!this.selectedSegments.size)this.selectedSegments.add(idx);
+        }else if(event.shiftKey){
+          const anchor=this.activeSegment||0,lo=Math.min(anchor,idx),hi=Math.max(anchor,idx);
+          this.selectedSegments=new Set(Array.from({length:hi-lo+1},(_,offset)=>lo+offset));
+        }else{
+          this.selectedSegments=new Set([idx]);
+        }
+        this.activeSegment=idx;this.selectWindowGeometry();this.sync();this.render();
+      };
+      button.oncontextmenu=(event)=>{
+        event.preventDefault();
+        const idx=num(button.dataset.selectSegment);
+        if(!this.selectedSegments.has(idx))this.selectedSegments=new Set([idx]);
+        this.render();
+        const selected=[...this.selectedSegments].filter(i=>this.state.segmentConfig.segments[i]);
+        const menu=document.createElement("div");
+        menu.className="m3td-segment-context-menu";
+        menu.style.left=Math.min(event.clientX,window.innerWidth-220)+"px";
+        menu.style.top=Math.min(event.clientY,window.innerHeight-110)+"px";
+        menu.innerHTML=`<button type="button" data-batch-enable>启用选中 ${selected.length} 个分段</button><button type="button" data-batch-disable>禁用选中 ${selected.length} 个分段</button>`;
+        const close=()=>{menu.remove();document.removeEventListener("pointerdown",close);};
+        menu.addEventListener("pointerdown",e=>e.stopPropagation());
+        document.addEventListener("pointerdown",close);
+        menu.querySelector("[data-batch-enable]").onclick=(e)=>{
+          e.stopPropagation();for(const i of selected)this.state.segmentConfig.segments[i].enabled=true;
+          close();this.sync();this.render();this.setStatus(`已启用 ${selected.length} 个分段`);
+        };
+        menu.querySelector("[data-batch-disable]").onclick=(e)=>{
+          e.stopPropagation();for(const i of selected)this.state.segmentConfig.segments[i].enabled=false;
+          close();this.sync();this.render();this.setStatus(`已禁用 ${selected.length} 个分段`);
+        };
+        document.body.appendChild(menu);
+      };
+    }
+    for(const eye of list.querySelectorAll("[data-toggle-segment]"))eye.onclick=(event)=>{
+      event.preventDefault();event.stopPropagation();
+      const idx=num(eye.dataset.toggleSegment),segment=this.state.segmentConfig.segments[idx];
+      segment.enabled=segment.enabled===false?true:false;
+      this.sync();this.render();
+      this.setStatus(segment.enabled===false?`第${idx+1}段已禁用`:`第${idx+1}段已启用`);
     };
     for(const input of list.querySelectorAll("[data-segment-prompt]")){
       input.oninput=()=>{this.state.segmentConfig.segments[num(input.dataset.segmentPrompt)].prompt=input.value;this.sync();this.renderGlobalPromptState();};
