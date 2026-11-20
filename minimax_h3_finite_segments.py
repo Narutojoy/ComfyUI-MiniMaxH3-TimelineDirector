@@ -392,7 +392,7 @@ def _prepare_finite_plan(
                     f"Segment {index + 1} has no [Shot 1] in the standard H3 fields; continuity instructions cannot be injected"
                 )
         prepared.append(prompt)
-    return {
+    finite_plan = {
         "type": "minimax_h3_finite_segment_plan",
         "version": 1,
         "source_plan": copy.deepcopy(source),
@@ -401,6 +401,16 @@ def _prepare_finite_plan(
         "requested_overlap_frames": int(overlap_frames),
         "overlap_frames": actual_overlap,
     }
+    if timeline_config.get("mode") == "timeline" and int(timeline_config.get("count", 0)) > 0:
+        active_original_indices = [
+            index for index, segment in enumerate(timeline_segments)
+            if isinstance(segment, dict) and segment.get("enabled") is not False
+        ]
+        finite_plan["segment_plans"] = [
+            _plan_for_segment(source, original_index + 1)
+            for original_index in active_original_indices
+        ]
+    return finite_plan
 
 
 def _prepare_timeline_segments(source):
