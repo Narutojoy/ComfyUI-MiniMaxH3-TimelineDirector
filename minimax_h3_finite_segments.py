@@ -12,6 +12,7 @@ from pathlib import Path
 
 import torch
 import folder_paths
+from server import PromptServer
 from comfy.nested_tensor import NestedTensor
 from comfy_api.latest import io
 from comfy_execution.graph_utils import GraphBuilder
@@ -39,6 +40,25 @@ from .minimax_h3_timeline_director import (
 
 H3_FPS = 24
 FiniteSegmentPlan = io.Custom("MINIMAX_H3_FINITE_SEGMENT_PLAN")
+
+
+def _send_timeline_segment_progress(finite, index, status, error=None):
+    """Send execution-backed segment state to the owning Material Planner UI."""
+    node_id = str(finite.get("source_plan", {}).get("director_node_id") or "")
+    if not node_id:
+        return
+    sender = getattr(PromptServer.instance, "send_sync", None)
+    if not callable(sender):
+        return
+    indices = finite.get("segment_indices") or list(range(1, int(finite.get("segment_count") or 0) + 1))
+    if index < 0 or index >= len(indices):
+        return
+    payload = {"node_id": node_id, "segment_index": int(indices[index]) - 1,
+               "status": str(status), "segment_count": int(finite.get("source_plan", {}).get("segment_count") or finite.get("segment_count") or 0)}
+    if error:
+        payload["error"] = str(error)[:500]
+    sender("minimax_h3_timeline_segment_progress", payload,
+           getattr(PromptServer.instance, "client_id", None))
 FiniteLoopState = io.Custom("MINIMAX_H3_FINITE_LOOP_STATE")
 
 
@@ -438,7 +458,7 @@ def _prepare_timeline_segments(source):
         return {
             "type": "minimax_h3_finite_segment_plan", "version": 4,
             "mode": "single_segment", "source_plan": source,
-            "segment_count": 1, "segment_plans": [plan],
+            "segment_count": 1, "segment_plans": [plan], "segment_indices": [1],
             "prompts": [global_prompt], "overlap_frames": 0,
             "segment_overlaps": [0], "segment_lengths": [length],
             "target_output_frames": length,
@@ -512,8 +532,9 @@ def _prepare_timeline_segments(source):
     return {
         "type": "minimax_h3_finite_segment_plan", "version": 3,
         "mode": "timeline_segments", "source_plan": source,
-        "segment_count": len(plans), "segment_plans": plans, "prompts": prompts,
-        "overlap_frames": 0, "segment_overlaps": overlaps,
+        "segment_count": len(plans), "segment_plans": plans,
+        "segment_indices": [original_index + 1 for original_index, _segment in active_segments],
+        "prompts": prompts, "overlap_frames": 0, "segment_overlaps": overlaps,
         "segment_lengths": lengths, "target_output_frames": target_output_frames,
         "second_pass": bool(source["timeline"].get("secondPass")),
         "second_pass_model": str(source["timeline"].get("secondPassModel") or ""),
@@ -829,6 +850,7 @@ class MiniMaxH3FiniteSegmentFinalize(io.ComfyNode):
             category="MiniMax H3/Internal",
             is_dev_only=True,
             inputs=[
+                FiniteSegmentPlan.Input("finite_plan", display_name="Finite Segment Plan"),
                 io.Latent.Input("sampled_latent"),
                 io.Image.Input("images"),
                 io.Int.Input("iteration", force_input=True),
@@ -846,9 +868,10 @@ class MiniMaxH3FiniteSegmentFinalize(io.ComfyNode):
 
     @classmethod
     def execute(
-        cls, sampled_latent, images, iteration, overlap_frames,
+        cls, finite_plan, sampled_latent, images, iteration, overlap_frames,
         trim_audio_head=True, audio=None, accumulated_images=None,
     ):
+        finite = _require_finite_plan(finite_plan)
         trim_frames = 0 if int(iteration) <= 0 or int(overlap_frames) == 0 else _valid_guide_frames(int(overlap_frames))
         if images.shape[0] <= trim_frames:
             raise ValueError(f"This segment has only {images.shape[0]} frames; cannot remove a {trim_frames}-frame overlap")
@@ -884,6 +907,7 @@ class MiniMaxH3FiniteSegmentFinalize(io.ComfyNode):
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+        _send_timeline_segment_progress(finite, int(iteration), "completed")
         return io.NodeOutput(sampled_latent, trimmed_images, trimmed_audio)
 
 
@@ -1134,6 +1158,7 @@ class MiniMaxH3FiniteLoopPrepare(io.ComfyNode):
                 target_latent=sampling_latent,
                 audio_latent=encoded_audio.out(0),
             ).out(0)
+        _send_timeline_segment_progress(finite, index, "running")
         return io.NodeOutput(
             continuation.out(0), sampling_latent, continuation.out(3), continuation.out(2),
             expand=graph.finalize(),
@@ -1216,6 +1241,7 @@ class MiniMaxH3FiniteLoopAccumulate(io.ComfyNode):
         else:
             merged_audio = current_audio
 
+        _send_timeline_segment_progress(finite, index, "completed")
         state = {
             "finite_plan": finite,
             "next_iteration": index + 1,
@@ -1288,6 +1314,27 @@ class MiniMaxH3FiniteLoopOutput(io.ComfyNode):
             f"merged output contains {int(images.shape[0])} frames."
         )
         return io.NodeOutput(last_latent, images, audio, status)
+
+
+class MiniMaxH3TimelineSegmentProgress(io.ComfyNode):
+    """Emit a segment-start event immediately before its sampler executes."""
+
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(
+            node_id="MiniMaxH3TimelineSegmentProgress",
+            display_name="MiniMax H3 Segment Progress (Internal)",
+            category="MiniMax H3/Internal", is_dev_only=True,
+            inputs=[FiniteSegmentPlan.Input("finite_plan"), io.Latent.Input("latent"),
+                    io.Int.Input("iteration", force_input=True)],
+            outputs=[io.Latent.Output(display_name="Sampling Latent")],
+        )
+
+    @classmethod
+    def execute(cls, finite_plan, latent, iteration):
+        finite = _require_finite_plan(finite_plan)
+        _send_timeline_segment_progress(finite, int(iteration), "running")
+        return io.NodeOutput(latent)
 
 
 class MiniMaxH3FiniteSegmentSampler(io.ComfyNode):
@@ -1396,14 +1443,22 @@ class MiniMaxH3FiniteSegmentSampler(io.ComfyNode):
                     target_latent=sampling_latent, audio_latent=encoded_audio.out(0),
                 ).out(0)
             if second_pass:
+                progress = graph.node(
+                    "MiniMaxH3TimelineSegmentProgress", id=f"progress_{number}",
+                    finite_plan=finite, latent=sampling_latent, iteration=index,
+                )
                 sampled = graph.node(
                     "MiniMaxH3TimelineSelfLiftSampler", id=f"sample_{number}",
                     model=continuation.out(3), positive=continuation.out(0),
                     negative=continuation.out(0), vae=vae,
-                    latent_image=sampling_latent, sampler=sampler, sigmas=sigmas,
+                    latent_image=progress.out(0), sampler=sampler, sigmas=sigmas,
                     seed=int(seed), cfg=1.0, **selflift_settings,
                 )
             else:
+                progress = graph.node(
+                    "MiniMaxH3TimelineSegmentProgress", id=f"progress_{number}",
+                    finite_plan=finite, latent=sampling_latent, iteration=index,
+                )
                 noise = graph.node("RandomNoise", id=f"noise_{number}", noise_seed=int(seed))
                 guider = graph.node(
                     "BasicGuider", id=f"guider_{number}", model=continuation.out(3),
@@ -1412,7 +1467,7 @@ class MiniMaxH3FiniteSegmentSampler(io.ComfyNode):
                 sampled = graph.node(
                     "SamplerCustomAdvanced", id=f"sample_{number}", noise=noise.out(0),
                     guider=guider.out(0), sampler=sampler, sigmas=sigmas,
-                    latent_image=sampling_latent,
+                    latent_image=progress.out(0),
                 )
             images = graph.node(
                 "VAEDecode", id=f"decode_video_{number}", samples=sampled.out(0), vae=vae,
@@ -1426,7 +1481,7 @@ class MiniMaxH3FiniteSegmentSampler(io.ComfyNode):
             finalized = graph.node(
                 "MiniMaxH3FiniteSegmentFinalize", id=f"finalize_{number}",
                 sampled_latent=sampled.out(0), images=images.out(0), audio=audio.out(0),
-                iteration=index, overlap_frames=overlap,
+                finite_plan=finite, iteration=index, overlap_frames=overlap,
                 trim_audio_head=not soft_audio,
                 **finalize_inputs,
             )
