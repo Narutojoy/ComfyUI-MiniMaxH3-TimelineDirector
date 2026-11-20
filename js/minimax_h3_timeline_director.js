@@ -840,8 +840,12 @@ class TimelineDirectorUI {
   }
 
   bindExternalFileDrop() {
+    // Internal library/segment drags must never be treated as files by
+    // ComfyUI's capture-phase drop handler, even if the browser exposes a
+    // "Files" type for the native drag payload.
+    const isInternalAssetDrag = () => !!this.assetDrag && (this.assetDrag.source === "library" || this.assetDrag.source === "segment");
     const stopComfyDrop = event => {
-      if (!isExternalFileDrag(event)) return false;
+      if (isInternalAssetDrag() || !isExternalFileDrag(event)) return false;
       event.preventDefault();
       event.stopPropagation();
       event.stopImmediatePropagation();
