@@ -1684,6 +1684,8 @@ class MiniMaxH3TimelinePlanner(io.ComfyNode):
         complete_plan = _create_timeline_plan(
             source_timeline_data, source_width, source_height, source_seconds, None
         )
+        if unique_id is not None:
+            complete_plan["director_node_id"] = str(unique_id)
         if import_preset is not None and unique_id is not None:
             sender = getattr(PromptServer.instance, "send_sync", None)
             if callable(sender):
