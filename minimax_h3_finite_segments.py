@@ -1158,9 +1158,12 @@ class MiniMaxH3FiniteLoopPrepare(io.ComfyNode):
                 target_latent=sampling_latent,
                 audio_latent=encoded_audio.out(0),
             ).out(0)
-        _send_timeline_segment_progress(finite, index, "running")
+        progress = graph.node(
+            "MiniMaxH3TimelineSegmentProgress", id="loop_segment_progress",
+            finite_plan=finite, latent=sampling_latent, iteration=index,
+        )
         return io.NodeOutput(
-            continuation.out(0), sampling_latent, continuation.out(3), continuation.out(2),
+            continuation.out(0), progress.out(0), continuation.out(3), continuation.out(2),
             expand=graph.finalize(),
         )
 
