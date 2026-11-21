@@ -1496,7 +1496,8 @@ class TimelineDirectorUI {
         e.stopPropagation();
         const asset=this.state[kind].find(item=>String(item.id)===String(this.assetDrag.id));
         if(!asset){this.assetDrag=null;clearMarkers();return;}
-        asset.group=group;
+        if(kind==="audios")asset.audioGroup=group;
+        else asset.group=group;
         this.assetDrag=null;
         clearMarkers();
         this.sync();
@@ -1536,7 +1537,8 @@ class TimelineDirectorUI {
         if(crossCategory){
           const asset=this.state[kind].find(item=>String(item.id)===String(draggedId));
           if(asset){
-            asset.group=group;
+            if(kind==="audios")asset.audioGroup=group;
+            else asset.group=group;
             reorderById(this.state[kind],draggedId,targetId,after);
             changed=true;
           }
