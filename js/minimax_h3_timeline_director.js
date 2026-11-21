@@ -2074,10 +2074,22 @@ api.addEventListener("execution_start",()=>{
 });
 api.addEventListener("minimax_h3_timeline_segment_progress",event=>{
   const payload=event.detail;
-  if(!payload?.node_id)return;
+  console.info("[MiniMaxH3 Timeline Progress] RECEIVED",payload);
+  if(!payload?.node_id){
+    console.warn("[MiniMaxH3 Timeline Progress] Event has no node_id",event);
+    return;
+  }
   const numericId=Number(payload.node_id);
-  const node=app.graph?.getNodeById?.(payload.node_id) ?? (Number.isFinite(numericId)?app.graph?.getNodeById?.(numericId):null);
-  if(node?.type!=="MiniMaxH3TimelinePlanner"||!node.__m3td)return;
+  const graph=app.graph;
+  const node=graph?.getNodeById?.(payload.node_id) ?? (Number.isFinite(numericId)?graph?.getNodeById?.(numericId):null);
+  if(node?.type!=="MiniMaxH3TimelinePlanner"||!node.__m3td){
+    console.warn("[MiniMaxH3 Timeline Progress] Planner node not found for event",{
+      payload, matchedNode:node&&{id:node.id,type:node.type,hasDirector:!!node.__m3td},
+      plannerNodes:(graph?._nodes||[]).filter(item=>item?.type==="MiniMaxH3TimelinePlanner").map(item=>({id:item.id,hasDirector:!!item.__m3td}))
+    });
+    return;
+  }
+  console.info("[MiniMaxH3 Timeline Progress] APPLY",payload);
   node.__m3td.updateExecutionProgress(payload);
 });
 
