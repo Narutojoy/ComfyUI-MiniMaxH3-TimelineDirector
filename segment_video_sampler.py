@@ -325,11 +325,17 @@ class MiniMaxH3FiniteSegmentVideoSampler(io.ComfyNode):
                 audio_vae=audio_vae, iteration_index=index,
                 continue_audio_latent=bool(continue_audio_latent),
             )
+            # Emit the running state only when this expanded graph node executes,
+            # immediately before the actual sampler (including the second-pass sampler).
+            progress = graph.node(
+                "MiniMaxH3TimelineSegmentProgress", id=f"video_progress_{number}",
+                finite_plan=finite, latent=prepared.out(1), iteration=index,
+            )
             if lift is not None:
                 sampled = graph.node(
                     "MiniMaxH3TimelineSelfLiftSampler", id=f"video_sample_{number}",
                     model=prepared.out(2), positive=prepared.out(0), negative=prepared.out(0),
-                    vae=vae, latent_image=prepared.out(1), sampler=sampler, sigmas=sigmas,
+                    vae=vae, latent_image=progress.out(0), sampler=sampler, sigmas=sigmas,
                     seed=int(seed), cfg=1.0, **lift,
                 )
             else:
