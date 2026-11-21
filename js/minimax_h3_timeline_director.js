@@ -466,6 +466,7 @@ class TimelineDirectorUI {
     this.segmentMenuCleanup=null;
     this.segmentBoxDrag=null;
     this.suppressSegmentClick=false;
+    this.collapsedSegmentGroups=new Set();
     this.segmentContextCapture=event=>{
       const target=event.target instanceof Element?event.target:null;
       const item=target?.closest("[data-select-segment],[data-segment-group]");
@@ -1676,7 +1677,18 @@ class TimelineDirectorUI {
     const timelineMode=this.hasSegmentWindows();
     section.querySelector(".m3td-segment-head strong").textContent=tr(timelineMode?"segmentTabs":"assignByPrompt");
     const segmentLabel=(segment,index)=>segment.name||tr("segmentTitle",{index:index+1});
-    const tabs=timelineMode?`<div class="m3td-segment-groups">${(this.state.segmentConfig.groups||[]).map(group=>`<button type="button" class="m3td-segment-group" data-segment-group="${esc(group.id)}">📁 ${esc(group.name)} (${this.state.segmentConfig.segments.filter(segment=>segment.groupId===group.id).length})</button>`).join("")}</div><div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((s,i)=>`<button type="button" class="m3td-btn ${s.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(i)?"m3td-segment-tab-selected":""}" data-select-segment="${i}" style="border-color:hsl(${(i*97+175)%360} 75% 55%);${i===(this.activeSegment||0)?"background:#34505b":""}">${esc(segmentLabel(s,i))}<span class="m3td-segment-eye" data-toggle-segment="${i}" title="${s.enabled===false?"启用该分段":"禁用该分段"}">${s.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`).join("")}</div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
+    const renderSegmentTab=(segment,index)=>`<button type="button" class="m3td-btn ${segment.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(index)?"m3td-segment-tab-selected":""}" data-select-segment="${index}" style="border-color:hsl(${(index*97+175)%360} 75% 55%);${index===(this.activeSegment||0)?"background:#34505b":""}">${esc(segmentLabel(segment,index))}<span class="m3td-segment-eye" data-toggle-segment="${index}" title="${segment.enabled===false?"启用该分段":"禁用该分段"}">${segment.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`;
+    const tabs=timelineMode?`<div class="m3td-segment-groups">${(this.state.segmentConfig.groups||[]).map(group=>{
+      const members=this.state.segmentConfig.segments.map((segment,index)=>({segment,index})).filter(item=>item.segment.groupId===group.id);
+      const collapsed=this.collapsedSegmentGroups.has(String(group.id));
+      return `<div class="m3td-segment-folder" data-segment-folder="${esc(group.id)}">
+        <div class="m3td-segment-folder-head">
+          <button type="button" class="m3td-segment-group" data-segment-group="${esc(group.id)}" aria-expanded="${!collapsed}">${collapsed?"📁":"📂"} ${esc(group.name)} (${members.length})</button>
+          <button type="button" class="m3td-segment-folder-select" data-select-segment-group="${esc(group.id)}" title="选择该分组全部分段">全选</button>
+        </div>
+        ${collapsed?"":`<div class="m3td-segment-tabs m3td-segment-folder-tabs">${members.map(item=>renderSegmentTab(item.segment,item.index)).join("")}</div>`}
+      </div>`;
+    }).join("")}</div><div class="m3td-segment-unassigned"><div class="m3td-segment-folder-caption">未分组</div><div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((segment,index)=>segment.groupId? "":renderSegmentTab(segment,index)).join("")}</div></div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
     list.innerHTML=tabs+this.state.segmentConfig.segments.map((segment,index)=>{
       if(timelineMode&&index!==(this.activeSegment||0))return "";
       const overlap=index?this.state.segmentConfig.segments[index-1].endFrame-segment.startFrame:0;
@@ -1750,6 +1762,10 @@ class TimelineDirectorUI {
         document.body.appendChild(menu);
       };
     }
+    for(const selectButton of list.querySelectorAll("[data-select-segment-group]"))selectButton.onclick=()=>{
+      const groupId=String(selectButton.dataset.selectSegmentGroup),indices=this.state.segmentConfig.segments.map((segment,index)=>segment.groupId===groupId?index:-1).filter(index=>index>=0);
+      if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}
+    };
     for(const groupButton of list.querySelectorAll("[data-segment-group]")){
       groupButton.onclick=()=>{const groupId=groupButton.dataset.segmentGroup,indices=this.state.segmentConfig.segments.map((segment,index)=>segment.groupId===groupId?index:-1).filter(index=>index>=0);if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}};
       groupButton.oncontextmenu=event=>{
@@ -1767,7 +1783,7 @@ class TimelineDirectorUI {
         document.body.appendChild(menu);
       };
     }
-    this.bindSegmentBoxSelection(list.querySelector(".m3td-segment-tabs"));
+    for(const tabsContainer of list.querySelectorAll(".m3td-segment-tabs"))this.bindSegmentBoxSelection(tabsContainer);
     for(const toggle of section.querySelectorAll("[data-collapse-toggle]")){
       const key=toggle.dataset.collapseToggle,panel=this.root.querySelector(`[data-collapse-panel="${key}"]`);
       if(panel&&this.collapsedSections.has(key)){panel.hidden=true;toggle.setAttribute("aria-expanded","false");}
