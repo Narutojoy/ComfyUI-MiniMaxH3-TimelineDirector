@@ -44,19 +44,24 @@ FiniteSegmentPlan = io.Custom("MINIMAX_H3_FINITE_SEGMENT_PLAN")
 
 def _send_timeline_segment_progress(finite, index, status, error=None):
     """Send execution-backed segment state to the owning Material Planner UI."""
-    node_id = str(finite.get("source_plan", {}).get("director_node_id") or "")
+    source_plan = finite.get("source_plan") or {}
+    node_id = str(source_plan.get("director_node_id") or "")
     if not node_id:
+        print("[MiniMaxH3 Timeline Progress] SKIP: source_plan has no director_node_id")
         return
     sender = getattr(PromptServer.instance, "send_sync", None)
     if not callable(sender):
+        print("[MiniMaxH3 Timeline Progress] SKIP: PromptServer.send_sync is unavailable")
         return
     indices = finite.get("segment_indices") or list(range(1, int(finite.get("segment_count") or 0) + 1))
     if index < 0 or index >= len(indices):
+        print(f"[MiniMaxH3 Timeline Progress] SKIP: index {index} outside {len(indices)} segments")
         return
     payload = {"node_id": node_id, "segment_index": int(indices[index]) - 1,
-               "status": str(status), "segment_count": int(finite.get("source_plan", {}).get("segment_count") or finite.get("segment_count") or 0)}
+               "status": str(status), "segment_count": int(source_plan.get("segment_count") or finite.get("segment_count") or 0)}
     if error:
         payload["error"] = str(error)[:500]
+    print(f"[MiniMaxH3 Timeline Progress] SEND {payload}")
     sender("minimax_h3_timeline_segment_progress", payload,
            getattr(PromptServer.instance, "client_id", None))
 FiniteLoopState = io.Custom("MINIMAX_H3_FINITE_LOOP_STATE")
