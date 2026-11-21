@@ -347,7 +347,7 @@ class MiniMaxH3FiniteSegmentVideoSampler(io.ComfyNode):
                 sampled = graph.node(
                     "SamplerCustomAdvanced", id=f"video_sample_{number}", noise=noise.out(0),
                     guider=guider.out(0), sampler=sampler, sigmas=sigmas,
-                    latent_image=prepared.out(1),
+                    latent_image=progress.out(0),
                 )
             archived = graph.node(
                 "MiniMaxH3SegmentVideoArchive", id=f"video_archive_{number}", finite_plan=finite,
