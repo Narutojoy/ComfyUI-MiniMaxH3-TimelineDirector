@@ -1584,7 +1584,12 @@ class TimelineDirectorUI {
   applySegmentCount() {
     const count=clamp(Math.floor(num(this.segmentCountDraft,1)),1,64);
     const previous=Array.isArray(this.state.segmentConfig?.segments)?this.state.segmentConfig.segments:[];
-    this.state.segmentConfig={count,mode:"timeline",segments:createWindows(previous,count,this.state.selection.duration*24)};
+    const previousGroups=Array.isArray(this.state.segmentConfig?.groups)?this.state.segmentConfig.groups:[];
+    const validGroupIds=new Set(previousGroups.map(group=>String(group.id)));
+    const segments=createWindows(previous,count,this.state.selection.duration*24);
+    for(const segment of segments)if(segment.groupId&&!validGroupIds.has(String(segment.groupId)))delete segment.groupId;
+    const usedGroupIds=new Set(segments.map(segment=>String(segment.groupId||"")).filter(Boolean));
+    this.state.segmentConfig={count,mode:"timeline",groups:previousGroups.filter(group=>usedGroupIds.has(String(group.id))),segments};
     this.activeSegment=Math.min(this.activeSegment||0,count-1);
     this.selectWindowGeometry();
     this.segmentCountDraft=count;
@@ -1688,7 +1693,7 @@ class TimelineDirectorUI {
         </div>
         ${collapsed?"":`<div class="m3td-segment-tabs m3td-segment-folder-tabs">${members.map(item=>renderSegmentTab(item.segment,item.index)).join("")}</div>`}
       </div>`;
-    }).join("")}</div><div class="m3td-segment-unassigned"><div class="m3td-segment-folder-caption">未分组</div><div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((segment,index)=>segment.groupId? "":renderSegmentTab(segment,index)).join("")}</div></div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
+    }).join("")}</div><div class="m3td-segment-unassigned"><div class="m3td-segment-folder-caption">未分组</div><div class="m3td-segment-tabs">${this.state.segmentConfig.segments.map((segment,index)=>((this.state.segmentConfig.groups||[]).some(group=>String(group.id)===String(segment.groupId))? "":renderSegmentTab(segment,index))).join("")}</div></div><p>${esc(tr("segmentTimelineHelp"))}<br>${esc(tr("segmentPlanHint"))}</p>`:"";
     list.innerHTML=tabs+this.state.segmentConfig.segments.map((segment,index)=>{
       if(timelineMode&&index!==(this.activeSegment||0))return "";
       const overlap=index?this.state.segmentConfig.segments[index-1].endFrame-segment.startFrame:0;
