@@ -1767,7 +1767,7 @@ class TimelineDirectorUI {
       if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}
     };
     for(const groupButton of list.querySelectorAll("[data-segment-group]")){
-      groupButton.onclick=()=>{const groupId=groupButton.dataset.segmentGroup,indices=this.state.segmentConfig.segments.map((segment,index)=>segment.groupId===groupId?index:-1).filter(index=>index>=0);if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}};
+      groupButton.onclick=()=>{const groupId=String(groupButton.dataset.segmentGroup);if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);this.renderSegments();};
       groupButton.oncontextmenu=event=>{
         event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();this.closeSegmentContextMenu();
         const groupId=groupButton.dataset.segmentGroup,group=this.state.segmentConfig.groups.find(item=>item.id===groupId);if(!group)return;
