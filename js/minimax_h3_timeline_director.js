@@ -1477,11 +1477,11 @@ class TimelineDirectorUI {
       for(const target of this.root.querySelectorAll(".m3td-bin-list.drag-over"))target.classList.remove("drag-over");
     };
 
-    // Image library bins accept images dragged from the other image categories.
-    // The asset ID remains unchanged, so segment assignments stay intact.
-    if(kind==="images" && group){
+    // Image and audio library bins accept assets dragged from sibling categories.
+    // The asset ID remains unchanged, so existing segment assignments stay intact.
+    if((kind==="images" || kind==="audios") && group){
       bin.ondragover=e=>{
-        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!=="images" || this.assetDrag.sourceGroup===group)return;
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!==kind || this.assetDrag.sourceGroup===group)return;
         e.preventDefault();
         e.stopPropagation();
         if(e.dataTransfer)e.dataTransfer.dropEffect="move";
@@ -1491,17 +1491,19 @@ class TimelineDirectorUI {
         if(!bin.contains(e.relatedTarget))bin.classList.remove("drag-over");
       };
       bin.ondrop=e=>{
-        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!=="images" || this.assetDrag.sourceGroup===group)return;
+        if(!this.assetDrag || this.assetDrag.source!=="library" || this.assetDrag.kind!==kind || this.assetDrag.sourceGroup===group)return;
         e.preventDefault();
         e.stopPropagation();
-        const asset=this.state.images.find(item=>String(item.id)===String(this.assetDrag.id));
+        const asset=this.state[kind].find(item=>String(item.id)===String(this.assetDrag.id));
         if(!asset){this.assetDrag=null;clearMarkers();return;}
         asset.group=group;
         this.assetDrag=null;
         clearMarkers();
         this.sync();
         this.render();
-        this.setStatus(`图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`);
+        this.setStatus(kind==="images"
+          ? `图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`
+          : `音频已移动到${group==="music"?"音乐参考":"音频参考"}分类`);
       };
     }
 
@@ -1529,13 +1531,13 @@ class TimelineDirectorUI {
         const draggedId=this.assetDrag.id;
         const targetId=card.dataset.assetId;
         const rect=card.getBoundingClientRect(),after=e.clientX>=rect.left+rect.width/2;
-        const crossCategory=kind==="images" && this.assetDrag.sourceGroup!==group;
+        const crossCategory=(kind==="images" || kind==="audios") && this.assetDrag.sourceGroup!==group;
         let changed=false;
         if(crossCategory){
-          const asset=this.state.images.find(item=>String(item.id)===String(draggedId));
+          const asset=this.state[kind].find(item=>String(item.id)===String(draggedId));
           if(asset){
             asset.group=group;
-            reorderById(this.state.images,draggedId,targetId,after);
+            reorderById(this.state[kind],draggedId,targetId,after);
             changed=true;
           }
         }else{
@@ -1547,7 +1549,9 @@ class TimelineDirectorUI {
           this.sync();
           this.render();
           this.setStatus(crossCategory
-            ? `图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`
+            ? (kind==="images"
+              ? `图片已移动到${group==="character"?"人物":group==="props"?"道具":"场景"}分类`
+              : `音频已移动到${group==="music"?"音乐参考":"音频参考"}分类`)
             : tr(label));
         }
       };
