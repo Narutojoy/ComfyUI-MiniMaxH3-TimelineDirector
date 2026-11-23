@@ -1492,7 +1492,7 @@ class TimelineDirectorUI {
         }else{
           this.imageAssetSelection=new Set([id]);this.imageAssetSelectionAnchor=id;
         }
-        this.renderAssets();
+        for(const item of this.root.querySelectorAll('.m3td-asset[data-asset-kind="images"]'))item.classList.toggle("asset-selected",this.imageAssetSelection.has(String(item.dataset.assetId)));
       };
     }
     bin.onpointerdown=event=>{
