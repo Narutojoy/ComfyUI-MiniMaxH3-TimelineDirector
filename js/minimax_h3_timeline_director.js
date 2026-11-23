@@ -200,6 +200,8 @@ function installStyles() {
       background:#242c39; cursor:grab; }
     .m3td-asset:active { cursor:grabbing; }
     .m3td-asset.dragging { opacity:.38; }
+    .m3td-asset.asset-selected { outline:2px solid var(--cyan); outline-offset:1px; box-shadow:0 0 0 2px #142b38; }
+    .m3td-selection-marquee { position:fixed; z-index:999999; border:1px solid var(--cyan); background:rgba(67,217,209,.16); pointer-events:none; }
     .m3td-asset.drop-before { box-shadow:-3px 0 0 var(--cyan); }
     .m3td-asset.drop-after { box-shadow:3px 0 0 var(--cyan); }
     .m3td-asset img { width:100%; height:100%; object-fit:cover; }
@@ -467,6 +469,8 @@ class TimelineDirectorUI {
     this.segmentBoxDrag=null;
     this.suppressSegmentClick=false;
     this.collapsedSegmentGroups=new Set();
+    this.imageAssetSelection=new Set();
+    this.imageAssetSelectionAnchor=null;
     this.segmentContextCapture=event=>{
       const target=event.target instanceof Element?event.target:null;
       const item=target?.closest("[data-select-segment],[data-segment-group]");
@@ -1442,10 +1446,11 @@ class TimelineDirectorUI {
 
   renderAssets() {
     const imageBins=[["character",this.root.querySelector('[data-bin="images-character"]')],["props",this.root.querySelector('[data-bin="images-props"]')],["scene",this.root.querySelector('[data-bin="images-scene"]')]];
-    const imgHtml=(asset,index)=>`<div class="m3td-asset" draggable="true" data-asset-id="${esc(asset.id)}" data-asset-kind="images" title="${esc(tr("dragReorder"))}"><img draggable="false" src="${esc(viewURL(asset.file))}"><span class="m3td-asset-tag">&lt;Picture ${index+1}&gt;</span><div class="m3td-asset-bottom"><span class="m3td-asset-name" data-edit-asset-name="${esc(asset.id)}" data-asset-kind="images" title="双击改名" style="cursor:pointer;">${esc(asset.name)}</span><button draggable="false" class="m3td-asset-x" data-remove-image="${esc(asset.id)}">×</button></div></div>`;
+    const imgHtml=(asset,index)=>`<div class="m3td-asset ${this.imageAssetSelection?.has(String(asset.id))?"asset-selected":""}" draggable="true" data-asset-id="${esc(asset.id)}" data-asset-kind="images" title="${esc(tr("dragReorder"))}"><img draggable="false" src="${esc(viewURL(asset.file))}"><span class="m3td-asset-tag">&lt;Picture ${index+1}&gt;</span><div class="m3td-asset-bottom"><span class="m3td-asset-name" data-edit-asset-name="${esc(asset.id)}" data-asset-kind="images" title="双击改名" style="cursor:pointer;">${esc(asset.name)}</span><button draggable="false" class="m3td-asset-x" data-remove-image="${esc(asset.id)}">×</button></div></div>`;
     for(const [group,bin] of imageBins){
       bin.innerHTML=this.state.images.filter(asset=>(asset.group||"character")===group).map(imgHtml).join("");
       for(const button of bin.querySelectorAll("[data-remove-image]"))button.onclick=event=>{event.stopPropagation();this.state.images=this.state.images.filter(asset=>asset.id!==button.dataset.removeImage);this.pruneSegmentAssignments();this.sync();this.render();};
+      this.bindImageAssetSelection(bin,group);
       this.bindAssetReorder(bin,"images","imageOrderUpdated",group);
     }
     const audioBins=[["ref",this.root.querySelector('[data-bin="audios-ref"]')],["music",this.root.querySelector('[data-bin="audios-music"]')]];
@@ -1470,6 +1475,49 @@ class TimelineDirectorUI {
         input.onblur=commit;input.onkeydown=keyEvent=>{if(keyEvent.key==="Enter")input.blur();if(keyEvent.key==="Escape"){input.value=oldName;input.blur();}};
       };
     }
+  }
+
+  bindImageAssetSelection(bin,group) {
+    const cards=()=>[...bin.querySelectorAll('.m3td-asset[data-asset-kind="images"]')];
+    for(const card of cards()){
+      card.onclick=event=>{
+        event.stopPropagation();
+        const id=String(card.dataset.assetId),items=cards().map(item=>String(item.dataset.assetId));
+        if(event.ctrlKey||event.metaKey){
+          if(this.imageAssetSelection.has(id))this.imageAssetSelection.delete(id);else this.imageAssetSelection.add(id);
+          this.imageAssetSelectionAnchor=id;
+        }else if(event.shiftKey&&this.imageAssetSelectionAnchor&&items.includes(this.imageAssetSelectionAnchor)){
+          const from=items.indexOf(this.imageAssetSelectionAnchor),to=items.indexOf(id),lo=Math.min(from,to),hi=Math.max(from,to);
+          for(let i=lo;i<=hi;i++)this.imageAssetSelection.add(items[i]);
+        }else{
+          this.imageAssetSelection=new Set([id]);this.imageAssetSelectionAnchor=id;
+        }
+        this.renderAssets();
+      };
+    }
+    bin.onpointerdown=event=>{
+      if(event.button!==0||event.target.closest(".m3td-asset"))return;
+      event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
+      const startX=event.clientX,startY=event.clientY;
+      const marquee=document.createElement("div");marquee.className="m3td-selection-marquee";document.body.appendChild(marquee);
+      let moved=false;
+      const move=e=>{
+        if(Math.hypot(e.clientX-startX,e.clientY-startY)<4&&!moved)return;
+        moved=true;e.preventDefault();e.stopPropagation();
+        const left=Math.min(startX,e.clientX),top=Math.min(startY,e.clientY),right=Math.max(startX,e.clientX),bottom=Math.max(startY,e.clientY);
+        Object.assign(marquee.style,{left:left+"px",top:top+"px",width:(right-left)+"px",height:(bottom-top)+"px"});
+        const hits=cards().filter(card=>{const r=card.getBoundingClientRect();return r.right>=left&&r.left<=right&&r.bottom>=top&&r.top<=bottom;});
+        const next=new Set(hits.map(card=>String(card.dataset.assetId)));
+        if(event.ctrlKey||event.metaKey)for(const id of next){if(this.imageAssetSelection.has(id))this.imageAssetSelection.delete(id);else this.imageAssetSelection.add(id);}
+        else this.imageAssetSelection=next;
+      };
+      const up=e=>{
+        document.removeEventListener("pointermove",move,true);document.removeEventListener("pointerup",up,true);marquee.remove();
+        if(moved){e.stopPropagation();this.imageAssetSelectionAnchor=[...this.imageAssetSelection].at(-1)||null;this.renderAssets();}
+        else if(!e.ctrlKey&&!e.metaKey&&!e.shiftKey){this.imageAssetSelection.clear();this.imageAssetSelectionAnchor=null;this.renderAssets();}
+      };
+      document.addEventListener("pointermove",move,true);document.addEventListener("pointerup",up,true);
+    };
   }
 
   bindAssetReorder(bin, kind, label, group = null) {
@@ -1512,7 +1560,11 @@ class TimelineDirectorUI {
     for(const card of bin.querySelectorAll(".m3td-asset")){
       card.ondragstart=e=>{
         if(e.target.closest?.("button,select,input")){e.preventDefault();return;}
-        this.assetDrag={kind,id:card.dataset.assetId,source:"library",sourceGroup:group};
+        const id=String(card.dataset.assetId);
+        if(kind==="images"){
+          if(!this.imageAssetSelection.has(id)){this.imageAssetSelection=new Set([id]);this.imageAssetSelectionAnchor=id;}
+          this.assetDrag={kind,id,ids:[...this.imageAssetSelection],source:"library",sourceGroup:group};
+        }else this.assetDrag={kind,id,source:"library",sourceGroup:group};
         card.classList.add("dragging");
         e.dataTransfer.effectAllowed="copyMove";
         e.dataTransfer.setData("text/plain",card.dataset.assetId);
@@ -1840,12 +1892,14 @@ class TimelineDirectorUI {
     const place=(kind,segmentIndex,targetId=null,after=true)=>{
       if(!this.assetDrag||this.assetDrag.kind!==kind)return false;
       const segment=this.state.segmentConfig.segments[segmentIndex];if(!segment)return false;
-      let values=segment[kind].filter(id=>String(id)!==String(this.assetDrag.id));
+      const moving=(this.assetDrag.ids?.length?this.assetDrag.ids:[this.assetDrag.id]).map(String);
+      let values=segment[kind].filter(id=>!(this.assetDrag.source==="segment"&&moving.includes(String(id))));
+      const additions=moving.filter(id=>!values.some(existing=>String(existing)===id));
       const limit=kind==="images"?MAX_SEGMENT_IMAGES:MAX_SEGMENT_AUDIOS;
-      if(values.length>=limit){this.setStatus(tr(kind==="images"?"maxImages":"maxAudio"));return false;}
-      if(targetId==null)values.push(this.assetDrag.id);
-      else {const at=values.findIndex(id=>String(id)===String(targetId));values.splice(at<0?values.length:at+(after?1:0),0,this.assetDrag.id);}
-      segment[kind]=values;return true;
+      if(values.length+additions.length>limit){this.setStatus(tr(kind==="images"?"maxImages":"maxAudio"));return false;}
+      if(targetId==null)values.push(...additions);
+      else {const at=values.findIndex(id=>String(id)===String(targetId));values.splice(at<0?values.length:at+(after?1:0),0,...additions);}
+      segment[kind]=values;return additions.length>0;
     };
     for(const bin of list.querySelectorAll("[data-segment-drop]")){
       const kind=bin.dataset.segmentDrop,index=num(bin.dataset.segmentIndex);
