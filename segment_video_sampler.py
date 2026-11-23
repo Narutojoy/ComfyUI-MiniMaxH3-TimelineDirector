@@ -29,6 +29,7 @@ from .minimax_h3_finite_segments import (
     _finite_video_audio_muted,
     _locked_audio_interval,
     _require_finite_plan,
+    _send_timeline_segment_progress,
     _selflift_settings,
     _silent_audio_interval,
 )
@@ -195,6 +196,7 @@ class MiniMaxH3SegmentVideoArchive(io.ComfyNode):
             merged_audio=merged_audio,
             written_frames=written + int(current.shape[0]),
         )
+        _send_timeline_segment_progress(finite, index, "completed")
         del current, images
         gc.collect()
         if torch.cuda.is_available():
@@ -323,11 +325,17 @@ class MiniMaxH3FiniteSegmentVideoSampler(io.ComfyNode):
                 audio_vae=audio_vae, iteration_index=index,
                 continue_audio_latent=bool(continue_audio_latent),
             )
+            # Emit the running state only when this expanded graph node executes,
+            # immediately before the actual sampler (including the second-pass sampler).
+            progress = graph.node(
+                "MiniMaxH3TimelineSegmentProgress", id=f"video_progress_{number}",
+                finite_plan=finite, latent=prepared.out(1), iteration=index,
+            )
             if lift is not None:
                 sampled = graph.node(
                     "MiniMaxH3TimelineSelfLiftSampler", id=f"video_sample_{number}",
                     model=prepared.out(2), positive=prepared.out(0), negative=prepared.out(0),
-                    vae=vae, latent_image=prepared.out(1), sampler=sampler, sigmas=sigmas,
+                    vae=vae, latent_image=progress.out(0), sampler=sampler, sigmas=sigmas,
                     seed=int(seed), cfg=1.0, **lift,
                 )
             else:
@@ -339,7 +347,7 @@ class MiniMaxH3FiniteSegmentVideoSampler(io.ComfyNode):
                 sampled = graph.node(
                     "SamplerCustomAdvanced", id=f"video_sample_{number}", noise=noise.out(0),
                     guider=guider.out(0), sampler=sampler, sigmas=sigmas,
-                    latent_image=prepared.out(1),
+                    latent_image=progress.out(0),
                 )
             archived = graph.node(
                 "MiniMaxH3SegmentVideoArchive", id=f"video_archive_{number}", finite_plan=finite,
