@@ -1449,7 +1449,7 @@ class TimelineDirectorUI {
     const imgHtml=(asset,index)=>`<div class="m3td-asset ${this.imageAssetSelection?.has(String(asset.id))?"asset-selected":""}" draggable="true" data-asset-id="${esc(asset.id)}" data-asset-kind="images" title="${esc(tr("dragReorder"))}"><img draggable="false" src="${esc(viewURL(asset.file))}"><span class="m3td-asset-tag">&lt;Picture ${index+1}&gt;</span><div class="m3td-asset-bottom"><span class="m3td-asset-name" data-edit-asset-name="${esc(asset.id)}" data-asset-kind="images" title="双击改名" style="cursor:pointer;">${esc(asset.name)}</span><button draggable="false" class="m3td-asset-x" data-remove-image="${esc(asset.id)}">×</button></div></div>`;
     for(const [group,bin] of imageBins){
       bin.innerHTML=this.state.images.filter(asset=>(asset.group||"character")===group).map(imgHtml).join("");
-      for(const button of bin.querySelectorAll("[data-remove-image]"))button.onclick=event=>{event.stopPropagation();this.state.images=this.state.images.filter(asset=>asset.id!==button.dataset.removeImage);this.pruneSegmentAssignments();this.sync();this.render();};
+      for(const button of bin.querySelectorAll("[data-remove-image]"))button.onclick=event=>{event.stopPropagation();this.state.images=this.state.images.filter(asset=>asset.id!==button.dataset.removeImage);this.imageAssetSelection?.delete(String(button.dataset.removeImage));this.pruneSegmentAssignments();this.sync();this.render();};
       this.bindImageAssetSelection(bin,group);
       this.bindAssetReorder(bin,"images","imageOrderUpdated",group);
     }
@@ -1498,7 +1498,7 @@ class TimelineDirectorUI {
     bin.onpointerdown=event=>{
       if(event.button!==0||event.target.closest(".m3td-asset"))return;
       event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
-      const startX=event.clientX,startY=event.clientY;
+      const startX=event.clientX,startY=event.clientY,originalSelection=new Set(this.imageAssetSelection);
       const marquee=document.createElement("div");marquee.className="m3td-selection-marquee";document.body.appendChild(marquee);
       let moved=false;
       const move=e=>{
@@ -1508,8 +1508,10 @@ class TimelineDirectorUI {
         Object.assign(marquee.style,{left:left+"px",top:top+"px",width:(right-left)+"px",height:(bottom-top)+"px"});
         const hits=cards().filter(card=>{const r=card.getBoundingClientRect();return r.right>=left&&r.left<=right&&r.bottom>=top&&r.top<=bottom;});
         const next=new Set(hits.map(card=>String(card.dataset.assetId)));
-        if(event.ctrlKey||event.metaKey)for(const id of next){if(this.imageAssetSelection.has(id))this.imageAssetSelection.delete(id);else this.imageAssetSelection.add(id);}
-        else this.imageAssetSelection=next;
+        if(event.ctrlKey||event.metaKey){
+          this.imageAssetSelection=new Set(originalSelection);
+          for(const id of next){if(this.imageAssetSelection.has(id))this.imageAssetSelection.delete(id);else this.imageAssetSelection.add(id);}
+        }else this.imageAssetSelection=next;
       };
       const up=e=>{
         document.removeEventListener("pointermove",move,true);document.removeEventListener("pointerup",up,true);marquee.remove();
@@ -1892,7 +1894,7 @@ class TimelineDirectorUI {
     const place=(kind,segmentIndex,targetId=null,after=true)=>{
       if(!this.assetDrag||this.assetDrag.kind!==kind)return false;
       const segment=this.state.segmentConfig.segments[segmentIndex];if(!segment)return false;
-      const moving=(this.assetDrag.ids?.length?this.assetDrag.ids:[this.assetDrag.id]).map(String);
+      const moving=(this.assetDrag.ids?.length?this.assetDrag.ids:[this.assetDrag.id]).map(String).filter(id=>this.state[kind].some(asset=>String(asset.id)===id));
       let values=segment[kind].filter(id=>!(this.assetDrag.source==="segment"&&moving.includes(String(id))));
       const additions=moving.filter(id=>!values.some(existing=>String(existing)===id));
       const limit=kind==="images"?MAX_SEGMENT_IMAGES:MAX_SEGMENT_AUDIOS;
