@@ -237,6 +237,12 @@ function installStyles() {
     .m3td-segment-folder.is-dragging { opacity:.45; }
     .m3td-segment-folder.is-drop-target { outline:2px dashed #59e5ff; outline-offset:2px; }
     .m3td-segment-folder-toggle { flex:0 0 auto; min-width:38px; }
+    .m3td-segment-folder.segment-drop-target { outline:2px dashed #59e5ff; outline-offset:2px; background:#163447; }
+    .m3td-segment-tabs [data-select-segment][draggable="true"] { cursor:grab; }
+    .m3td-segment-tabs [data-select-segment][draggable="true"]:active { cursor:grabbing; }
+    .m3td-segment-tabs .m3td-segment-dragging { opacity:.45; outline:1px dashed #59e5ff; }
+
+
     .m3td-segment-group[draggable="true"] { cursor:grab; }
     .m3td-segment-group[draggable="true"]:active { cursor:grabbing; }
 
@@ -486,6 +492,7 @@ class TimelineDirectorUI {
     this.suppressSegmentClick=false;
     this.collapsedSegmentGroups=new Set();
     this.draggedSegmentGroupId=null;
+    this.segmentGroupDrag=null;
     this.suppressGroupClick=false;
     this.imageAssetSelection=new Set();
     this.imageAssetSelectionAnchor=null;
@@ -1780,7 +1787,7 @@ class TimelineDirectorUI {
     const timelineMode=this.hasSegmentWindows();
     section.querySelector(".m3td-segment-head strong").textContent=tr(timelineMode?"segmentTabs":"assignByPrompt");
     const segmentLabel=(segment,index)=>segment.name||tr("segmentTitle",{index:index+1});
-    const renderSegmentTab=(segment,index)=>`<button type="button" class="m3td-btn ${segment.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(index)?"m3td-segment-tab-selected":""}" data-select-segment="${index}" style="border-color:hsl(${(index*97+175)%360} 75% 55%);${index===(this.activeSegment||0)?"background:#34505b":""}">${esc(segmentLabel(segment,index))}<span class="m3td-segment-eye" data-toggle-segment="${index}" title="${segment.enabled===false?"启用该分段":"禁用该分段"}">${segment.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`;
+    const renderSegmentTab=(segment,index)=>`<button type="button" class="m3td-btn ${segment.enabled===false?"m3td-segment-disabled":""} ${this.selectedSegments?.has(index)?"m3td-segment-tab-selected":""}" data-select-segment="${index}" draggable="true" style="border-color:hsl(${(index*97+175)%360} 75% 55%);${index===(this.activeSegment||0)?"background:#34505b":""}">${esc(segmentLabel(segment,index))}<span class="m3td-segment-eye" data-toggle-segment="${index}" title="${segment.enabled===false?"启用该分段":"禁用该分段"}">${segment.enabled===false?'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>':'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>'}</span></button>`;
     const tabs=timelineMode?`<div class="m3td-segment-groups">${(this.state.segmentConfig.groups||[]).map(group=>{
       const members=this.state.segmentConfig.segments.map((segment,index)=>({segment,index})).filter(item=>item.segment.groupId===group.id);
       const collapsed=this.collapsedSegmentGroups.has(String(group.id));
@@ -1835,6 +1842,21 @@ class TimelineDirectorUI {
         }
         this.activeSegment=idx;this.selectWindowGeometry();this.sync();this.render();
       };
+      button.ondragstart=event=>{
+        const idx=num(button.dataset.selectSegment);
+        if(!this.selectedSegments?.has(idx))this.selectedSegments=new Set([idx]);
+        const indices=[...this.selectedSegments].filter(i=>this.state.segmentConfig.segments[i]);
+        this.segmentGroupDrag={indices,sourceGroup:this.state.segmentConfig.segments[idx]?.groupId??null};
+        event.dataTransfer.effectAllowed="move";
+        event.dataTransfer.setData("application/x-m3td-segments",indices.join(","));
+        event.dataTransfer.setData("text/plain",indices.map(i=>i+1).join(", "));
+        for(const i of indices)list.querySelector(`[data-select-segment="${i}"]`)?.classList.add("m3td-segment-dragging");
+      };
+      button.ondragend=()=>{
+        this.segmentGroupDrag=null;
+        for(const tab of list.querySelectorAll(".m3td-segment-dragging"))tab.classList.remove("m3td-segment-dragging");
+        for(const folder of list.querySelectorAll(".m3td-segment-folder"))folder.classList.remove("segment-drop-target");
+      };
       button.oncontextmenu=(event)=>{
         event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
         const idx=num(button.dataset.selectSegment);
@@ -1881,6 +1903,31 @@ class TimelineDirectorUI {
       this.sync();this.render();
       this.setStatus(enable?`已启用分组内 ${members.length} 个分段`:`已禁用分组内 ${members.length} 个分段`);
     };
+    for(const folder of list.querySelectorAll("[data-segment-folder]")){
+      folder.ondragover=event=>{
+        if(!this.segmentGroupDrag?.indices?.length)return;
+        event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";
+        folder.classList.add("segment-drop-target");
+      };
+      folder.ondragleave=event=>{
+        if(!folder.contains(event.relatedTarget))folder.classList.remove("segment-drop-target");
+      };
+      folder.ondrop=event=>{
+        const drag=this.segmentGroupDrag;
+        if(!drag?.indices?.length)return;
+        event.preventDefault();event.stopPropagation();
+        const targetGroup=String(folder.dataset.segmentFolder);
+        const segments=this.state.segmentConfig.segments;
+        const moving=drag.indices.filter(index=>segments[index]);
+        for(const index of moving)segments[index].groupId=targetGroup;
+        this.segmentGroupDrag=null;
+        for(const item of list.querySelectorAll(".m3td-segment-folder"))item.classList.remove("segment-drop-target");
+        this.selectedSegments=new Set(moving);
+        if(moving.length){this.activeSegment=moving[0];this.selectWindowGeometry();}
+        this.sync();this.render();
+        this.setStatus(`已将 ${moving.length} 个分段移动到分组`);
+      };
+    }
     for(const groupButton of list.querySelectorAll("[data-segment-group]")){
       const groupId=String(groupButton.dataset.segmentGroup),folder=groupButton.closest("[data-segment-folder]");
       groupButton.onclick=()=>{if(this.suppressGroupClick){this.suppressGroupClick=false;return;}if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);this.renderSegments();};
