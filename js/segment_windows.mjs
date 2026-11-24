@@ -30,7 +30,7 @@ export function nearestOverlap(frames, maximum) {
   );
 }
 
-export function createWindows(previous, count, defaultFrames) {
+export function createWindows(previous, count, defaultFrames, defaultOverlapFrames = 39) {
   const result = [];
 
   for (let i = 0; i < count; i++) {
@@ -45,7 +45,7 @@ export function createWindows(previous, count, defaultFrames) {
       ? nearestOverlap(
           Number.isInteger(old.startFrame)
             ? prev.endFrame - old.startFrame
-            : 39,
+            : defaultOverlapFrames,
           Math.min(oldLength, prev.endFrame - prev.startFrame) - 1
         )
       : 0;
@@ -72,6 +72,35 @@ export function createWindows(previous, count, defaultFrames) {
       endFrame: start + length,
       requestedDurationFrames: requested
     });
+  }
+
+  return result;
+}
+
+
+export function applyGlobalOverlapFrames(windows, requestedOverlapFrames) {
+  const result = windows.map(segment => ({ ...segment }));
+  const desired = Math.max(0, Math.round(Number(requestedOverlapFrames) || 0));
+
+  for (let i = 1; i < result.length; i++) {
+    const previous = result[i - 1];
+    const segment = result[i];
+    const oldOverlap = previous.endFrame - segment.startFrame;
+    const requested = Number.isInteger(segment.requestedDurationFrames)
+      ? segment.requestedDurationFrames
+      : Math.max(1, segment.endFrame - segment.startFrame - oldOverlap);
+    const maximum = Math.max(
+      0,
+      Math.min(previous.endFrame - previous.startFrame - 1, MAX_LENGTH - requested)
+    );
+    const overlap = nearestOverlap(desired, maximum);
+    const length = alignedLengthAtLeast(
+      requested + overlap,
+      Math.max(5, overlap + 1)
+    );
+    segment.startFrame = previous.endFrame - overlap;
+    segment.endFrame = segment.startFrame + length;
+    segment.requestedDurationFrames = requested;
   }
 
   return result;
