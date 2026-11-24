@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { createWindows, editWindow, minimumAlignedLength, setWindowContributionDuration } from "./segment_windows.mjs";
+import { createWindows, editWindow, minimumAlignedLength, nearestOverlap, applyGlobalOverlapFrames, setWindowContributionDuration } from "./segment_windows.mjs";
 
 const TIMELINE_NODE_NAMES = new Set(["MiniMaxH3TimelinePlanner", "MiniMaxH3TimelineDirector"]);
 const STYLE_ID = "m3td-style";
@@ -226,6 +226,15 @@ function installStyles() {
     .m3td-segment-note { color:#7f8ba0; }
     .m3td-segment-list { display:grid; gap:7px; }
     .m3td-segment-tabs { display:flex; flex-wrap:wrap; gap:6px; position:relative; }
+    .m3td-segment-groups { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:8px; align-items:start; }
+    .m3td-segment-folder { min-width:0; padding:5px; border:1px solid #30394a; border-radius:6px; background:#131a24; }
+    .m3td-segment-folder-head { display:flex; align-items:center; gap:5px; min-width:0; margin-bottom:5px; }
+    .m3td-segment-folder-head .m3td-segment-group { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .m3td-segment-folder-tabs { min-height:0; }
+    .m3td-segment-unassigned { margin-top:7px; }
+    .m3td-segment-folder-caption { margin-bottom:4px; color:#a8b5c9; font-size:11px; }
+    .m3td-segment-folder-select { flex:0 0 auto; }
+    .m3td-inspector[hidden],.m3td-preview[hidden] { display:none !important; }
     .m3td-segment-box { position:absolute; z-index:50; pointer-events:none; border:2px solid #59e5ff; background:#36cfff30; box-shadow:0 0 0 1px #07131d,0 0 14px #39dfff88; border-radius:4px; }
     .m3td-segment-tabs [data-select-segment].m3td-box-hit { filter:brightness(1.3); outline:2px solid #59e5ff; outline-offset:2px; background:#24596b !important; }
     .m3td-assets-categorized { display:block; width:100%; min-width:0; }
@@ -415,8 +424,9 @@ function normalizeState(raw) {
   const count=clamp(rawCount,1,64);
   const sourceSegments=Array.isArray(rawConfig.segments)?rawConfig.segments:[];
   const migratedFromUnsegmented=rawCount<1;
-  const defaultWindows=createWindows([],count,base.selection.duration*24);
-  base.segmentConfig={count,activeIndex:clamp(Math.floor(num(rawConfig.activeIndex)),0,count-1),mode:migratedFromUnsegmented||rawConfig.mode==="timeline"?"timeline":"legacy",groups:Array.isArray(rawConfig.groups)?rawConfig.groups.filter(g=>g&&typeof g==="object").map(g=>({id:String(g.id||uid()),name:String(g.name||"未命名分组")})):[],segments:Array.from({length:count},(_,index)=>{
+  const globalOverlapFrames=Math.max(0,Math.floor(num(rawConfig.globalOverlapFrames,39)));
+  const defaultWindows=createWindows([],count,base.selection.duration*24,globalOverlapFrames);
+  base.segmentConfig={count,activeIndex:clamp(Math.floor(num(rawConfig.activeIndex)),0,count-1),globalOverlapFrames,mode:migratedFromUnsegmented||rawConfig.mode==="timeline"?"timeline":"legacy",groups:Array.isArray(rawConfig.groups)?rawConfig.groups.filter(g=>g&&typeof g==="object").map(g=>({id:String(g.id||uid()),name:String(g.name||"未命名分组")})):[],segments:Array.from({length:count},(_,index)=>{
     const segment=sourceSegments[index]&&typeof sourceSegments[index]==="object"?sourceSegments[index]:{};
     const fallback=defaultWindows[index];
     return {...fallback,...segment,
@@ -660,6 +670,8 @@ class TimelineDirectorUI {
         <button class="m3td-btn" data-action="fitGap">${esc(tr("matchNearestGap"))}</button>
         <label class="m3td-field">${esc(tr("materialSegments"))} <input data-field="segmentCount" type="number" min="1" max="64" step="1"></label>
         <button class="m3td-btn" data-action="applySegments">${esc(tr("updateSegments"))}</button>
+        <label class="m3td-field">全局重叠帧 <input data-field="globalOverlapFrames" type="number" min="0" max="3587" step="1" value="${this.state.segmentConfig.globalOverlapFrames}"></label>
+        <button class="m3td-btn" data-action="applyGlobalOverlap">应用到所有分段</button>
         ${this.isPlanner?`<label class="m3td-field"><input data-field="secondPass" type="checkbox"> ${esc(tr("secondPass"))}</label>`:""}
         ${this.isPlanner?`<label class="m3td-field">${esc(tr("secondPassModel"))} <select class="m3td-upscaler-select" data-field="secondPassModel">${upscalerOptions}</select></label>`:""}
         ${this.isPlanner?`<label class="m3td-field">${esc(tr("secondPassHighSteps"))} <input data-field="secondPassHighSteps" type="number" min="1" step="1" style="width:4.5em"></label>`:""}
@@ -753,6 +765,7 @@ class TimelineDirectorUI {
     this.root.querySelector('[data-action="fit"]').onclick = () => this.fitTimeline();
     this.root.querySelector('[data-action="fitGap"]').onclick = () => this.fitSelectionToNearestGap();
     this.root.querySelector('[data-action="applySegments"]').onclick = () => this.applySegmentCount();
+    this.root.querySelector('[data-action="applyGlobalOverlap"]').onclick = () => this.applyGlobalOverlap();
     this.videoAudioToggle.onclick = event => {
       event.stopPropagation();
       this.state.videoAudioEnabled = !this.state.videoAudioEnabled;
@@ -1635,15 +1648,38 @@ class TimelineDirectorUI {
     this.selectWindowGeometry();this.sync();this.render();
   }
 
+  applyGlobalOverlap() {
+    const input=this.root.querySelector('[data-field="globalOverlapFrames"]');
+    const requested=Math.max(0,Math.floor(num(input?.value,39)));
+    const segments=this.state.segmentConfig.segments||[];
+    if(!this.hasSegmentWindows()){
+      this.state.segmentConfig.segments=createWindows(
+        segments,
+        this.state.segmentConfig.count,
+        Math.round(this.state.selection.duration*24),
+        Math.max(0,Math.floor(num(this.state.segmentConfig.globalOverlapFrames,39)))
+      );
+      this.state.segmentConfig.mode="timeline";
+    }
+    const effective=nearestOverlap(requested,3587);
+    this.state.segmentConfig.globalOverlapFrames=effective;
+    this.state.segmentConfig.segments=applyGlobalOverlapFrames(this.state.segmentConfig.segments,effective);
+    this.activeSegment=Math.min(this.activeSegment||0,this.state.segmentConfig.segments.length-1);
+    this.selectWindowGeometry();
+    this.sync();this.render();
+    this.setStatus(`已统一应用重叠帧：${effective} 帧（H3 合法帧数）`);
+  }
+
   applySegmentCount() {
     const count=clamp(Math.floor(num(this.segmentCountDraft,1)),1,64);
     const previous=Array.isArray(this.state.segmentConfig?.segments)?this.state.segmentConfig.segments:[];
     const previousGroups=Array.isArray(this.state.segmentConfig?.groups)?this.state.segmentConfig.groups:[];
     const validGroupIds=new Set(previousGroups.map(group=>String(group.id)));
-    const segments=createWindows(previous,count,this.state.selection.duration*24);
+    const globalOverlapFrames=Math.max(0,Math.floor(num(this.state.segmentConfig?.globalOverlapFrames,39)));
+    const segments=createWindows(previous,count,this.state.selection.duration*24,globalOverlapFrames);
     for(const segment of segments)if(segment.groupId&&!validGroupIds.has(String(segment.groupId)))delete segment.groupId;
     const usedGroupIds=new Set(segments.map(segment=>String(segment.groupId||"")).filter(Boolean));
-    this.state.segmentConfig={count,mode:"timeline",groups:previousGroups.filter(group=>usedGroupIds.has(String(group.id))),segments};
+    this.state.segmentConfig={count,mode:"timeline",globalOverlapFrames,groups:previousGroups.filter(group=>usedGroupIds.has(String(group.id))),segments};
     this.activeSegment=Math.min(this.activeSegment||0,count-1);
     this.selectWindowGeometry();
     this.segmentCountDraft=count;
@@ -1871,7 +1907,7 @@ class TimelineDirectorUI {
         const index=num(durationInput.dataset.segmentDuration),seconds=Math.max(5/24,num(durationInput.value,this.state.selection.duration)),requestedFrames=Math.round(seconds*24),count=this.state.segmentConfig.count;
         if(!this.hasSegmentWindows()){
           const previous=this.state.segmentConfig.segments;
-          this.state.segmentConfig.segments=createWindows(previous,count,Math.round(this.state.selection.duration*24));
+          this.state.segmentConfig.segments=createWindows(previous,count,Math.round(this.state.selection.duration*24),Math.max(0,Math.floor(num(this.state.segmentConfig.globalOverlapFrames,39))));
           this.state.segmentConfig.mode="timeline";
         }
         this.activeSegment=index;
