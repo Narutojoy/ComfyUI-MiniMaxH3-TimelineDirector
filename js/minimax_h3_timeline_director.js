@@ -234,6 +234,12 @@ function installStyles() {
     .m3td-segment-unassigned { margin-top:7px; }
     .m3td-segment-folder-caption { margin-bottom:4px; color:#a8b5c9; font-size:11px; }
     .m3td-segment-folder-select { flex:0 0 auto; }
+    .m3td-segment-folder.is-dragging { opacity:.45; }
+    .m3td-segment-folder.is-drop-target { outline:2px dashed #59e5ff; outline-offset:2px; }
+    .m3td-segment-folder-toggle { flex:0 0 auto; min-width:38px; }
+    .m3td-segment-group[draggable="true"] { cursor:grab; }
+    .m3td-segment-group[draggable="true"]:active { cursor:grabbing; }
+
     .m3td-inspector[hidden],.m3td-preview[hidden] { display:none !important; }
     .m3td-segment-box { position:absolute; z-index:50; pointer-events:none; border:2px solid #59e5ff; background:#36cfff30; box-shadow:0 0 0 1px #07131d,0 0 14px #39dfff88; border-radius:4px; }
     .m3td-segment-tabs [data-select-segment].m3td-box-hit { filter:brightness(1.3); outline:2px solid #59e5ff; outline-offset:2px; background:#24596b !important; }
@@ -479,6 +485,8 @@ class TimelineDirectorUI {
     this.segmentBoxDrag=null;
     this.suppressSegmentClick=false;
     this.collapsedSegmentGroups=new Set();
+    this.draggedSegmentGroupId=null;
+    this.suppressGroupClick=false;
     this.imageAssetSelection=new Set();
     this.imageAssetSelectionAnchor=null;
     this.segmentContextCapture=event=>{
@@ -1776,10 +1784,12 @@ class TimelineDirectorUI {
     const tabs=timelineMode?`<div class="m3td-segment-groups">${(this.state.segmentConfig.groups||[]).map(group=>{
       const members=this.state.segmentConfig.segments.map((segment,index)=>({segment,index})).filter(item=>item.segment.groupId===group.id);
       const collapsed=this.collapsedSegmentGroups.has(String(group.id));
+      const allDisabled=members.length>0&&members.every(item=>item.segment.enabled===false);
       return `<div class="m3td-segment-folder" data-segment-folder="${esc(group.id)}">
         <div class="m3td-segment-folder-head">
-          <button type="button" class="m3td-segment-group" data-segment-group="${esc(group.id)}" aria-expanded="${!collapsed}">${collapsed?"📁":"📂"} ${esc(group.name)} (${members.length})</button>
+          <button type="button" class="m3td-segment-group" data-segment-group="${esc(group.id)}" data-edit-segment-group="${esc(group.id)}" draggable="true" aria-expanded="${!collapsed}" title="拖动排序；双击重命名">${allDisabled?"🚫":collapsed?"📁":"📂"} ${esc(group.name)} (${members.length})</button>
           <button type="button" class="m3td-segment-folder-select" data-select-segment-group="${esc(group.id)}" title="选择该分组全部分段">全选</button>
+          <button type="button" class="m3td-segment-folder-toggle" data-toggle-segment-group="${esc(group.id)}" title="${allDisabled?"启用":"禁用"}该分组全部分段">${allDisabled?"启用":"禁用"}</button>
         </div>
         ${collapsed?"":`<div class="m3td-segment-tabs m3td-segment-folder-tabs">${members.map(item=>renderSegmentTab(item.segment,item.index)).join("")}</div>`}
       </div>`;
@@ -1861,8 +1871,61 @@ class TimelineDirectorUI {
       const groupId=String(selectButton.dataset.selectSegmentGroup),indices=this.state.segmentConfig.segments.map((segment,index)=>segment.groupId===groupId?index:-1).filter(index=>index>=0);
       if(indices.length){this.selectedSegments=new Set(indices);this.activeSegment=indices[0];this.selectWindowGeometry();this.sync();this.render();}
     };
+    for(const toggleButton of list.querySelectorAll("[data-toggle-segment-group]"))toggleButton.onclick=event=>{
+      event.preventDefault();event.stopPropagation();
+      const groupId=String(toggleButton.dataset.toggleSegmentGroup);
+      const members=this.state.segmentConfig.segments.filter(segment=>String(segment.groupId)===groupId);
+      if(!members.length)return;
+      const enable=members.every(segment=>segment.enabled===false);
+      for(const segment of members)segment.enabled=enable;
+      this.sync();this.render();
+      this.setStatus(enable?`已启用分组内 ${members.length} 个分段`:`已禁用分组内 ${members.length} 个分段`);
+    };
     for(const groupButton of list.querySelectorAll("[data-segment-group]")){
-      groupButton.onclick=()=>{const groupId=String(groupButton.dataset.segmentGroup);if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);this.renderSegments();};
+      const groupId=String(groupButton.dataset.segmentGroup),folder=groupButton.closest("[data-segment-folder]");
+      groupButton.onclick=()=>{if(this.suppressGroupClick){this.suppressGroupClick=false;return;}if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);this.renderSegments();};
+      groupButton.ondblclick=event=>{
+        event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
+        const group=this.state.segmentConfig.groups.find(item=>String(item.id)===groupId);if(!group)return;
+        const input=document.createElement("input");input.type="text";input.value=group.name;input.maxLength=40;
+        input.style.cssText="flex:1;min-width:60px;padding:4px 6px;color:#fff;background:#101722;border:1px solid #43d9d1;border-radius:4px;font:inherit;";
+        groupButton.replaceWith(input);input.focus();input.select();let cancelled=false,finished=false;
+        const commit=()=>{if(finished)return;finished=true;if(!cancelled){const value=input.value.trim();if(value)group.name=value;}this.sync();this.render();};
+        input.onblur=commit;input.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"){e.preventDefault();input.blur();}if(e.key==="Escape"){cancelled=true;input.blur();}};
+        for(const ev of ["pointerdown","click","dblclick"])input.addEventListener(ev,e=>e.stopPropagation());
+      };
+      groupButton.ondragstart=event=>{
+        event.stopPropagation();this.draggedSegmentGroupId=groupId;this.suppressGroupClick=true;
+        event.dataTransfer.effectAllowed="move";
+        event.dataTransfer.setData("application/x-m3td-segment-group",groupId);
+        event.dataTransfer.setData("text/plain",groupId);
+        folder?.classList.add("is-dragging");
+      };
+      groupButton.ondragover=event=>{
+        if(!this.draggedSegmentGroupId||this.draggedSegmentGroupId===groupId)return;
+        event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";
+        folder?.classList.add("is-drop-target");
+      };
+      groupButton.ondragleave=event=>{if(!folder?.contains(event.relatedTarget))folder?.classList.remove("is-drop-target");};
+      groupButton.ondrop=event=>{
+        if(!this.draggedSegmentGroupId||this.draggedSegmentGroupId===groupId)return;
+        event.preventDefault();event.stopPropagation();
+        const sourceId=this.draggedSegmentGroupId,groups=this.state.segmentConfig.groups||[];
+        const from=groups.findIndex(item=>String(item.id)===sourceId),to=groups.findIndex(item=>String(item.id)===groupId);
+        if(from>=0&&to>=0){
+          const [moving]=groups.splice(from,1),target=folder?.getBoundingClientRect();
+          const after=target?((event.clientY-target.top)>target.height/2):false;
+          let insertAt=groups.findIndex(item=>String(item.id)===groupId);
+          if(after)insertAt++;
+          groups.splice(Math.max(0,insertAt),0,moving);
+          this.sync();this.render();
+        }
+        this.draggedSegmentGroupId=null;
+      };
+      groupButton.ondragend=()=>{
+        this.draggedSegmentGroupId=null;this.suppressGroupClick=false;
+        for(const item of list.querySelectorAll(".m3td-segment-folder"))item.classList.remove("is-dragging","is-drop-target");
+      };
       groupButton.oncontextmenu=event=>{
         event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();this.closeSegmentContextMenu();
         const groupId=groupButton.dataset.segmentGroup,group=this.state.segmentConfig.groups.find(item=>item.id===groupId);if(!group)return;
