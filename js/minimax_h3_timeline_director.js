@@ -1744,7 +1744,7 @@ class TimelineDirectorUI {
   bindSegmentBoxSelection(container) {
     if(!container)return;
     container.onpointerdown=event=>{
-      if(event.button!==0||event.target.closest("[data-toggle-segment]"))return;
+      if(event.button!==0||event.target.closest("[data-toggle-segment]")||event.target.closest('[data-select-segment][draggable="true"]'))return;
       event.stopPropagation();
       this.segmentBoxDrag={startX:event.clientX,startY:event.clientY,lastX:event.clientX,lastY:event.clientY,moved:false,original:new Set(this.selectedSegments||[])};
       const move=moveEvent=>{
@@ -1843,6 +1843,7 @@ class TimelineDirectorUI {
         this.activeSegment=idx;this.selectWindowGeometry();this.sync();this.render();
       };
       button.ondragstart=event=>{
+        event.stopPropagation();
         const idx=num(button.dataset.selectSegment);
         if(!this.selectedSegments?.has(idx))this.selectedSegments=new Set([idx]);
         const indices=[...this.selectedSegments].filter(i=>this.state.segmentConfig.segments[i]);
@@ -1930,16 +1931,25 @@ class TimelineDirectorUI {
     }
     for(const groupButton of list.querySelectorAll("[data-segment-group]")){
       const groupId=String(groupButton.dataset.segmentGroup),folder=groupButton.closest("[data-segment-folder]");
-      groupButton.onclick=()=>{if(this.suppressGroupClick){this.suppressGroupClick=false;return;}if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);this.renderSegments();};
+      groupButton.onclick=event=>{
+        if(this.suppressGroupClick){this.suppressGroupClick=false;return;}
+        if(event.detail>1)return;
+        clearTimeout(this.segmentGroupClickTimer);
+        this.segmentGroupClickTimer=setTimeout(()=>{
+          if(this.collapsedSegmentGroups.has(groupId))this.collapsedSegmentGroups.delete(groupId);else this.collapsedSegmentGroups.add(groupId);
+          this.renderSegments();
+        },320);
+      };
       groupButton.ondblclick=event=>{
         event.preventDefault();event.stopPropagation();event.stopImmediatePropagation?.();
+        clearTimeout(this.segmentGroupClickTimer);
         const group=this.state.segmentConfig.groups.find(item=>String(item.id)===groupId);if(!group)return;
         const input=document.createElement("input");input.type="text";input.value=group.name;input.maxLength=40;
         input.style.cssText="flex:1;min-width:60px;padding:4px 6px;color:#fff;background:#101722;border:1px solid #43d9d1;border-radius:4px;font:inherit;";
         groupButton.replaceWith(input);input.focus();input.select();let cancelled=false,finished=false;
         const commit=()=>{if(finished)return;finished=true;if(!cancelled){const value=input.value.trim();if(value)group.name=value;}this.sync();this.render();};
         input.onblur=commit;input.onkeydown=e=>{e.stopPropagation();if(e.key==="Enter"){e.preventDefault();input.blur();}if(e.key==="Escape"){cancelled=true;input.blur();}};
-        for(const ev of ["pointerdown","click","dblclick"])input.addEventListener(ev,e=>e.stopPropagation());
+        for(const ev of ["pointerdown","mousedown","click","dblclick"])input.addEventListener(ev,e=>{e.stopPropagation();e.stopImmediatePropagation?.();});
       };
       groupButton.ondragstart=event=>{
         event.stopPropagation();this.draggedSegmentGroupId=groupId;this.suppressGroupClick=true;
