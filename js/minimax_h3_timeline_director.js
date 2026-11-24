@@ -1923,7 +1923,8 @@ class TimelineDirectorUI {
         this.draggedSegmentGroupId=null;
       };
       groupButton.ondragend=()=>{
-        this.draggedSegmentGroupId=null;this.suppressGroupClick=false;
+        this.draggedSegmentGroupId=null;
+        requestAnimationFrame(()=>{this.suppressGroupClick=false;});
         for(const item of list.querySelectorAll(".m3td-segment-folder"))item.classList.remove("is-dragging","is-drop-target");
       };
       groupButton.oncontextmenu=event=>{
