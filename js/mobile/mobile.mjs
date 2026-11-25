@@ -32,6 +32,7 @@ let saveInFlight = false;
 let dirty = false;
 let conflict = false;
 let nodeUuid = "";
+let referenceSize = { width: 832, height: 480 };
 
 const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -200,6 +201,7 @@ async function claimPairingCode() {
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
     nodeUuid = payload.node_uuid || "";
+    referenceSize = payload.reference_size || referenceSize;
     activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     sessionStorage.setItem("m3td-mobile-token", sessionToken);
     sessionStorage.setItem("m3td-mobile-node", nodeUuid);
@@ -225,6 +227,7 @@ async function restoreSession() {
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
     nodeUuid = payload.node_uuid || sessionStorage.getItem("m3td-mobile-node") || "";
+    referenceSize = payload.reference_size || referenceSize;
     activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     connectEvents(sessionToken);
   } catch {
@@ -656,7 +659,7 @@ async function uploadAsset(file,kind,category) {
     }else if(kind==="video"){
       if(!info.hasVideo)throw new Error("视频文件中没有可用画面轨道");
       const start=videos().reduce((max,clip)=>Math.max(max,Number(clip.start||0)+Number(clip.duration||0)),0);
-      currentState.videoClips.push({id:uid(),file:info.filename,name:file.name,start,duration:Math.max(5/24,Number(info.duration)||5),trimStart:0,sourceDuration:Number(info.duration)||5,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth:Number(info.width)||832,referenceHeight:Number(info.height)||480,peaks:[],proxy:""});
+      currentState.videoClips.push({id:uid(),file:info.filename,name:file.name,start,duration:Math.max(5/24,Number(info.duration)||5),trimStart:0,sourceDuration:Number(info.duration)||5,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth:Number(referenceSize.width)||832,referenceHeight:Number(referenceSize.height)||480,peaks:info.peaks||[],proxy:""});
     }else{
       if(!info.hasAudio)throw new Error("文件中没有可用音轨");
       currentState.audios.push({id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference",audioGroup:category});
