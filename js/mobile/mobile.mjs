@@ -235,9 +235,12 @@ function connectEvents(token) {
   activeSocket.addEventListener("close", event => {
     if (socket !== activeSocket) return;
     if (event.code === 4002 || event.code === 4003) {
+      sessionGeneration += 1;
       clearTimeout(saveTimer);
       clearTimeout(reconnectTimer);
       reconnectTimer = 0;
+      saveInFlight = false;
+      pendingStateJson = "";
       sessionStorage.removeItem("m3td-mobile-token");
       sessionStorage.removeItem("m3td-mobile-node");
       sessionToken = "";
@@ -888,13 +891,19 @@ function renderSettingsPanel() {
   });
   editorContent.querySelector("#disconnect-mobile").addEventListener("click",async()=>{
     const button=editorContent.querySelector("#disconnect-mobile");button.disabled=true;clearTimeout(saveTimer);
+    const requestGeneration=sessionGeneration,requestToken=sessionToken;
     try {
-      const response=await fetch(API_ROOT+"/session/revoke",{method:"POST",headers:{Authorization:"Bearer "+sessionToken}});
+      const response=await fetch(API_ROOT+"/session/revoke",{method:"POST",headers:{Authorization:"Bearer "+requestToken}});
       const payload=await response.json().catch(()=>({}));
+      if(requestGeneration!==sessionGeneration||requestToken!==sessionToken)return;
       if(!response.ok)throw new Error(payload.error||("HTTP "+response.status));
-      socket?.close();sessionStorage.removeItem("m3td-mobile-token");sessionStorage.removeItem("m3td-mobile-node");
-      sessionToken="";currentState=null;revision=0;setConnected(false);feedback("手机授权已从服务器撤销。","success");
-    } catch(error) {button.disabled=false;feedback("服务器撤销失败，凭据仍保留，请联网后重试："+error.message,"error");}
+      sessionGeneration+=1;
+      clearTimeout(saveTimer);clearTimeout(reconnectTimer);saveTimer=0;reconnectTimer=0;
+      const previousSocket=socket;socket=null;previousSocket?.close();
+      sessionStorage.removeItem("m3td-mobile-token");sessionStorage.removeItem("m3td-mobile-node");
+      sessionToken="";currentState=null;revision=0;saveInFlight=false;pendingStateJson="";dirty=false;conflict=false;
+      setConnected(false);feedback("手机授权已从服务器撤销。","success");
+    } catch(error) {if(requestGeneration===sessionGeneration&&requestToken===sessionToken){button.disabled=false;feedback("服务器撤销失败，凭据仍保留，请联网后重试："+error.message,"error");}}
   });
 }
 
