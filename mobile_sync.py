@@ -36,6 +36,7 @@ class MobileSession:
     node_uuid: str
     state: dict[str, Any]
     token_hash: str
+    reference_size: dict[str, int] = field(default_factory=lambda: {"width": 832, "height": 480})
     mobile_token_hash: str = ""
     revision: int = 1
     expires_at: float = field(default_factory=lambda: time.time() + SESSION_TTL_SECONDS)
@@ -139,6 +140,13 @@ async def mobile_pair_create(request: web.Request) -> web.Response:
         node_uuid = str(payload.get("node_uuid") or "")
         uuid.UUID(node_uuid)
         state = _valid_state(payload.get("state"))
+        raw_size = payload.get("reference_size") or {}
+        if not isinstance(raw_size, dict):
+            raise ValueError("reference_size must be an object")
+        reference_size = {
+            "width": max(64, min(4096, int(float(raw_size.get("width", 832))))),
+            "height": max(64, min(4096, int(float(raw_size.get("height", 480))))),
+        }
     except (ValueError, TypeError) as exc:
         return web.json_response({"error": str(exc)}, status=400)
 
@@ -149,6 +157,7 @@ async def mobile_pair_create(request: web.Request) -> web.Response:
         node_uuid=node_uuid,
         state=state,
         token_hash=hashlib.sha256(token.encode("utf-8")).hexdigest(),
+        reference_size=reference_size,
     )
     old_sockets: list[web.WebSocketResponse] = []
     async with _lock:
@@ -206,6 +215,7 @@ async def mobile_pair_claim(request: web.Request) -> web.Response:
         "node_uuid": session.node_uuid,
         "state": session.state,
         "revision": session.revision,
+        "reference_size": session.reference_size,
     })
 
 
@@ -219,6 +229,7 @@ async def mobile_state_get(request: web.Request) -> web.Response:
         "node_uuid": session.node_uuid,
         "state": session.state,
         "revision": session.revision,
+        "reference_size": session.reference_size,
     })
 
 
