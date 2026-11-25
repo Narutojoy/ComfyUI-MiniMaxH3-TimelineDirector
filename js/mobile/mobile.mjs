@@ -653,7 +653,7 @@ function renderAssetsPanel() {
       clip.duration=Math.max(5/24,Math.min(available,duration+delta));
     }
     const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
-    if(bar){bar.style.left=(clip.start*mobileTimelineScale)+"px";bar.style.width=Math.max(28,clip.duration*44)+"px";}
+    if(bar){bar.style.left=(clip.start*mobileTimelineScale)+"px";bar.style.width=Math.max(28,clip.duration*mobileTimelineScale)+"px";}
   };
   editorContent.querySelector("#split-video")?.addEventListener("click",()=>{
     const index=videos().findIndex(item=>String(item.id)===String(selectedVideoId));
