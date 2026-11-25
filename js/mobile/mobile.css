@@ -175,3 +175,10 @@ body.is-connected .connect-actions{display:none}
 .mobile-video-preview strong{font-size:12px}
 .mobile-video-preview video{width:100%;max-height:240px;border-radius:10px;background:#05070a}
 .mobile-timeline-actions button:disabled{opacity:.4}
+
+
+.mobile-asset-name{width:100%;min-width:0;padding:4px 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--text);font:600 11px/1.4 inherit}
+.mobile-asset-name:focus{border-color:var(--accent);outline:none;background:#0c1119}
+.mobile-order-actions{display:grid;grid-template-columns:repeat(3,28px);gap:3px;align-items:center;flex:0 0 auto}
+.mobile-order-actions button{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;background:#202938;color:var(--text);font-size:13px}
+.mobile-order-actions .mobile-icon-button{border:0;background:rgba(248,113,113,.12);color:#fca5a5;font-size:18px}
