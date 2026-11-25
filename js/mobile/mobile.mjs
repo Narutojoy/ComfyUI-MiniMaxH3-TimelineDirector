@@ -434,6 +434,9 @@ function renderAssetsPanel() {
     videoDrag={clip,edge,startX:event.clientX,start:Number(clip.start||0),duration:Number(clip.duration||0),trimStart:Number(clip.trimStart||0),pointerId:event.pointerId};
     element.setPointerCapture?.(event.pointerId);
     element.classList.add("dragging");
+    window.addEventListener("pointermove",moveVideoDrag,{passive:false});
+    window.addEventListener("pointerup",finishVideoDrag,{once:true});
+    window.addEventListener("pointercancel",finishVideoDrag,{once:true});
   }));
   const finishVideoDrag=()=>{
     if(!videoDrag)return;
@@ -464,9 +467,6 @@ function renderAssetsPanel() {
     const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
     if(bar){bar.style.left=(clip.start*44)+"px";bar.style.width=Math.max(28,clip.duration*44)+"px";}
   };
-  window.addEventListener("pointermove",moveVideoDrag,{passive:false});
-  window.addEventListener("pointerup",finishVideoDrag,{once:true});
-  window.addEventListener("pointercancel",finishVideoDrag,{once:true});
   editorContent.querySelector("#split-video")?.addEventListener("click",()=>{
     const index=videos().findIndex(item=>String(item.id)===String(selectedVideoId));
     if(index<0)return;
