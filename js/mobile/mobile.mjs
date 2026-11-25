@@ -23,6 +23,9 @@ let revision = 0;
 let socket = null;
 let activePanel = "segments";
 let activeSegment = 0;
+let selectedVideoId = "";
+let mobilePlayhead = 0;
+let videoDrag = null;
 let saveTimer = 0;
 let saveInFlight = false;
 let dirty = false;
@@ -343,6 +346,19 @@ function renderSegmentsPanel() {
   });
 }
 
+function renderVideoTimeline() {
+  const list=[...videos()].sort((a,b)=>Number(a.start||0)-Number(b.start||0));
+  const end=Math.max(12,...list.map(clip=>Number(clip.start||0)+Number(clip.duration||0)+1));
+  const scale=44;
+  const selected=list.find(clip=>String(clip.id)===String(selectedVideoId))||list[0]||null;
+  if(selected&&!selectedVideoId)selectedVideoId=selected.id;
+  mobilePlayhead=Math.max(0,Math.min(mobilePlayhead,end));
+  const ruler=Array.from({length:Math.ceil(end/5)+1},(_,i)=>i*5).filter(t=>t<=end).map(t=>'<span style="left:'+(t*scale)+'px">'+t.toFixed(0)+'s</span>').join("");
+  const clips=list.map((clip,index)=>'<div class="mobile-timeline-clip '+(String(clip.id)===String(selectedVideoId)?"selected":"")+'" data-video-clip="'+escapeHTML(clip.id)+'" style="left:'+(Number(clip.start||0)*scale)+'px;width:'+Math.max(28,Number(clip.duration||0)*scale)+'px"><button type="button" class="mobile-timeline-handle left" data-video-edge="left" aria-label="调整片段起点"></button><strong>'+escapeHTML(clip.name||"视频 "+(index+1))+'</strong><small>'+Number(clip.duration||0).toFixed(2)+'s</small><button type="button" class="mobile-timeline-handle right" data-video-edge="right" aria-label="调整片段终点"></button></div>').join("");
+  const preview=selected?'<div class="mobile-video-preview"><strong>'+escapeHTML(selected.name||"参考视频预览")+'</strong><video controls playsinline preload="metadata" src="'+escapeHTML(mediaURL(selected.file))+'"></video></div>':"";
+  return '<section class="mobile-card mobile-timeline-card"><div class="mobile-card-heading"><h3>视频时间轴</h3><span>拖动片段或两侧边缘调整</span></div>'+(list.length?'<div class="mobile-timeline-scroll"><div class="mobile-timeline-track" style="width:'+Math.max(100,end*scale)+'px"><div class="mobile-timeline-ruler">'+ruler+'</div>'+clips+'<i class="mobile-timeline-playhead" style="left:'+(mobilePlayhead*scale)+'px"></i></div></div><label class="mobile-field mobile-playhead-control">播放位置 · '+mobilePlayhead.toFixed(2)+' 秒<input id="video-playhead" type="range" min="0" max="'+end+'" step="0.0416667" value="'+mobilePlayhead+'"></label><div class="mobile-timeline-actions"><button type="button" class="mobile-secondary" id="split-video" '+(selected?"":"disabled")+'>在播放位置分割</button><button type="button" class="mobile-danger" id="delete-selected-video" '+(selected?"":"disabled")+'>删除选中片段</button></div>'+preview:'<p class="mobile-empty">上传参考视频后，这里会显示可拖动的视频时间轴。</p>')+'</section>';
+}
+
 function renderAssetsPanel() {
   const segment=selectedSegment();
   const imageCategories=[["character","人物"],["props","道具"],["scene","环境"]];
@@ -381,6 +397,7 @@ function renderAssetsPanel() {
       <label class="mobile-upload-button">选择图片、音频或视频文件<input id="mobile-upload" type="file" accept="image/*,audio/*,video/*" multiple></label>
       <p class="mobile-hint">上传后会加入素材库；如当前只有一个分段，系统会按电脑端规则自动加入该段。</p>
     </section>
+    ${renderVideoTimeline()}
     <section class="mobile-card"><div class="mobile-card-heading"><h3>参考视频（${videos().length}）</h3><label class="mobile-switch"><input id="video-audio-enabled" type="checkbox" ${currentState.videoAudioEnabled===false?"":"checked"}><span>保留视频音轨</span></label></div>
       ${videos().map((clip,index)=>`<article class="mobile-asset-card video-card"><video src="${escapeHTML(mediaURL(clip.file))}" muted playsinline preload="metadata"></video><div class="mobile-asset-info"><strong>${escapeHTML(clip.name||"参考视频 "+(index+1))}</strong><small>${Number(clip.duration||0).toFixed(2)} 秒 · ${clip.hasAudio?"含音轨":"无音轨"}</small><label>开始位置<input type="number" step="0.04" min="0" data-video-start="${escapeHTML(clip.id)}" value="${Number(clip.start||0).toFixed(2)}"></label><label>使用时长<input type="number" step="0.04" min="0.21" data-video-duration="${escapeHTML(clip.id)}" value="${Number(clip.duration||0).toFixed(2)}"></label><select data-video-mode="${escapeHTML(clip.id)}"><option value="guide" ${clip.referenceMode==="guide"?"selected":""}>完整参考</option><option value="edit" ${clip.referenceMode==="edit"?"selected":""}>普通参考视频</option><option value="boundary" ${clip.referenceMode==="boundary"?"selected":""}>边界参考</option></select></div><button type="button" class="mobile-icon-button" data-delete-video="${escapeHTML(clip.id)}" aria-label="删除视频">×</button></article>`).join("")||'<p class="mobile-empty">还没有参考视频。</p>'}
     </section>
@@ -399,6 +416,67 @@ function renderAssetsPanel() {
       await uploadAsset(file,["ref","music"].includes(category)?"audio":category==="video"?"video":"image",category);
     }
     renderPanel();
+  });
+  const playheadInput=editorContent.querySelector("#video-playhead");
+  playheadInput?.addEventListener("input",event=>{
+    mobilePlayhead=Number(event.target.value)||0;
+    const marker=editorContent.querySelector(".mobile-timeline-playhead");
+    if(marker)marker.style.left=(mobilePlayhead*44)+"px";
+    const label=editorContent.querySelector(".mobile-playhead-control");
+    if(label)label.firstChild.textContent="播放位置 · "+mobilePlayhead.toFixed(2)+" 秒";
+  });
+  editorContent.querySelectorAll("[data-video-clip]").forEach(element=>element.addEventListener("pointerdown",event=>{
+    const clip=videos().find(item=>String(item.id)===element.dataset.videoClip);
+    if(!clip)return;
+    selectedVideoId=clip.id;
+    const edge=event.target.closest("[data-video-edge]")?.dataset.videoEdge||"move";
+    event.preventDefault();event.stopPropagation();
+    videoDrag={clip,edge,startX:event.clientX,start:Number(clip.start||0),duration:Number(clip.duration||0),trimStart:Number(clip.trimStart||0),pointerId:event.pointerId};
+    element.setPointerCapture?.(event.pointerId);
+    element.classList.add("dragging");
+  }));
+  const finishVideoDrag=()=>{
+    if(!videoDrag)return;
+    videoDrag=null;scheduleSave();renderPanel();
+  };
+  const moveVideoDrag=event=>{
+    if(!videoDrag||event.pointerId!==videoDrag.pointerId)return;
+    event.preventDefault();
+    const clip=videoDrag.clip,edge=videoDrag.edge,start=videoDrag.start,duration=videoDrag.duration,trimStart=videoDrag.trimStart;
+    const delta=Math.round(((event.clientX-videoDrag.startX)/44)*24)/24;
+    if(edge==="move"){
+      clip.start=Math.max(0,start+delta);
+      const others=videos().filter(item=>item.id!==clip.id);
+      const candidates=others.flatMap(item=>[Number(item.start||0),Number(item.start||0)+Number(item.duration||0)]);
+      const nearest=candidates.reduce((best,value)=>Math.abs(value-clip.start)<Math.abs(best-clip.start)?value:best,clip.start);
+      if(Math.abs(nearest-clip.start)<=0.12)clip.start=Math.max(0,nearest);
+    }else if(edge==="left"){
+      const end=start+duration,nextStart=Math.max(0,Math.min(end-5/24,start+delta)),applied=nextStart-start;
+      clip.start=nextStart;clip.duration=end-nextStart;
+      clip.trimStart=Math.max(0,Math.min(trimStart+duration-5/24,trimStart+applied));
+    }else{
+      const available=Math.max(5/24,Number(clip.sourceDuration||duration)-trimStart);
+      clip.duration=Math.max(5/24,Math.min(available,duration+delta));
+    }
+    const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
+    if(bar){bar.style.left=(clip.start*44)+"px";bar.style.width=Math.max(28,clip.duration*44)+"px";}
+  };
+  window.addEventListener("pointermove",moveVideoDrag,{passive:false});
+  window.addEventListener("pointerup",finishVideoDrag,{once:true});
+  window.addEventListener("pointercancel",finishVideoDrag,{once:true});
+  editorContent.querySelector("#split-video")?.addEventListener("click",()=>{
+    const index=videos().findIndex(item=>String(item.id)===String(selectedVideoId));
+    if(index<0)return;
+    const clip=videos()[index],cut=mobilePlayhead-Number(clip.start||0);
+    if(cut<=5/24||cut>=Number(clip.duration||0)-5/24){feedback("播放位置必须位于片段内部，并为两侧保留至少 5 帧。","error");return;}
+    const right={...clip,id:uid(),start:mobilePlayhead,duration:clip.duration-cut,trimStart:clip.trimStart+cut};
+    clip.duration=cut;currentState.videoClips.splice(index+1,0,right);selectedVideoId=right.id;
+    scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#delete-selected-video")?.addEventListener("click",()=>{
+    if(!selectedVideoId)return;
+    currentState.videoClips=videos().filter(item=>String(item.id)!==String(selectedVideoId));
+    selectedVideoId="";scheduleSave();renderPanel();
   });
   editorContent.querySelector("#video-audio-enabled").addEventListener("change",event=>{
     currentState.videoAudioEnabled=event.target.checked;scheduleSave();
