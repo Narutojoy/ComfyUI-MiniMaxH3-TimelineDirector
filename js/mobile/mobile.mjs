@@ -563,14 +563,22 @@ function renderAssetsPanel() {
   }));
   editorContent.querySelectorAll("[data-move-image]").forEach(button=>button.addEventListener("click",()=>{
     const list=currentState.images||[],index=list.findIndex(item=>String(item.id)===button.dataset.moveImage);
-    const target=index+(button.dataset.direction==="up"?-1:1);
-    if(index<0||target<0||target>=list.length||list[target].group!==list[index].group)return;
+    if(index<0)return;
+    const group=list[index].group||"character";
+    const peers=list.map((item,i)=>({item,i})).filter(entry=>(entry.item.group||"character")===group);
+    const peerIndex=peers.findIndex(entry=>entry.i===index),targetPeer=peerIndex+(button.dataset.direction==="up"?-1:1);
+    if(targetPeer<0||targetPeer>=peers.length)return;
+    const target=peers[targetPeer].i;
     [list[index],list[target]]=[list[target],list[index]];scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-move-audio]").forEach(button=>button.addEventListener("click",()=>{
     const list=currentState.audios||[],index=list.findIndex(item=>String(item.id)===button.dataset.moveAudio);
-    const target=index+(button.dataset.direction==="up"?-1:1);
-    if(index<0||target<0||target>=list.length||(list[target].audioGroup||"ref")!==(list[index].audioGroup||"ref"))return;
+    if(index<0)return;
+    const group=list[index].audioGroup||"ref";
+    const peers=list.map((item,i)=>({item,i})).filter(entry=>(entry.item.audioGroup||"ref")===group);
+    const peerIndex=peers.findIndex(entry=>entry.i===index),targetPeer=peerIndex+(button.dataset.direction==="up"?-1:1);
+    if(targetPeer<0||targetPeer>=peers.length)return;
+    const target=peers[targetPeer].i;
     [list[index],list[target]]=[list[target],list[index]];scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-image-category]").forEach(select=>select.addEventListener("change",()=>{
