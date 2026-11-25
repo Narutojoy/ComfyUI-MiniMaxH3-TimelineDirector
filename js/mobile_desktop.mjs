@@ -87,6 +87,8 @@ export function attachMobilePairing(ui) {
   let socket = null;
   let applyingRemote = false;
   let pendingTimer = 0;
+  let pushInFlight = false;
+  let pendingStateJson = "";
   let conflict = false;
 
   const setStatus = message => { status.textContent = message; };
@@ -104,6 +106,8 @@ export function attachMobilePairing(ui) {
   };
   const pushLocal = async () => {
     if (!token || !socket || socket.readyState !== WebSocket.OPEN || conflict || applyingRemote) return;
+    pushInFlight = true;
+    pendingStateJson = JSON.stringify(ui.state);
     try {
       const response = await fetch(API_ROOT + "/state", {
         method: "PUT",
@@ -120,6 +124,9 @@ export function attachMobilePairing(ui) {
       revision = payload.revision;
     } catch (error) {
       setStatus("同步暂时失败：" + error.message);
+    } finally {
+      pushInFlight = false;
+      pendingStateJson = "";
     }
   };
 
@@ -180,9 +187,12 @@ export function attachMobilePairing(ui) {
         } else if (message.type === "paired") {
           setStatus("手机已完成配对，实时同步已建立。");
         } else if (message.type === "state") {
-          if (pendingTimer) {
+          if (pushInFlight && JSON.stringify(message.state) === pendingStateJson) {
+            revision = Number(message.revision) || revision;
+            setStatus("电脑端修改已同步。");
+          } else if (pendingTimer || pushInFlight) {
             conflict = true;
-            setStatus("手机端与电脑端同时修改。同步已暂停，未自动覆盖任何一端。");
+            setStatus("手机端与电脑端同时修改。同步已暂停，保留电脑端当前内容，请先核对两端。");
           } else {
             applyRemote(message);
             setStatus("手机端修改已同步到电脑。");
