@@ -136,7 +136,7 @@ function receiveRemote(message) {
   }
   currentState = message.state;
   revision = nextRevision;
-  activeSegment = Math.min(activeSegment, Math.max(0, segments().length - 1));
+  activeSegment = Math.max(0, Math.min(Number(currentState.segmentConfig?.activeIndex) || 0, Math.max(0, segments().length - 1)));
   setSyncStatus("电脑端已更新 · 版本 " + revision);
   renderPanel();
 }
