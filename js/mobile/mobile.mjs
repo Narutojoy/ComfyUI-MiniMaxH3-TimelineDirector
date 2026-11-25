@@ -480,6 +480,7 @@ function renderAssetsPanel() {
   editorContent.querySelectorAll("[data-video-clip]").forEach(element=>element.addEventListener("pointerdown",event=>{
     const clip=videos().find(item=>String(item.id)===element.dataset.videoClip);
     if(!clip)return;
+    if(String(selectedVideoId)!==String(clip.id))mobilePlayhead=Number(clip.start||0);
     selectedVideoId=clip.id;
     const edge=event.target.closest("[data-video-edge]")?.dataset.videoEdge||"move";
     event.preventDefault();event.stopPropagation();
