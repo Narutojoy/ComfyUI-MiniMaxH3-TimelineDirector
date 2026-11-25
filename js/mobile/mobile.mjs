@@ -1,18 +1,44 @@
+import { createWindows, setWindowContributionDuration, applyGlobalOverlapFrames } from "../segment_windows.mjs";
+
 const helpDialog = document.querySelector("#connect-dialog");
-const openHelp = () => { helpDialog.hidden = false; };
-const closeHelp = () => { helpDialog.hidden = true; };
 const pairInput = document.querySelector("#pair-code");
 const pairButton = document.querySelector("#connect-pair");
 const pairFeedback = document.querySelector("#pair-feedback");
 const connectionTitle = document.querySelector(".connection-copy strong");
 const connectionDescription = document.querySelector(".connection-copy span");
 const connectionState = document.querySelector(".connection-state");
+const editor = document.querySelector("#mobile-editor");
+const editorContent = document.querySelector("#editor-content");
+const editorHeading = document.querySelector("#editor-heading");
+const editorSyncStatus = document.querySelector("#editor-sync-status");
+const gettingStarted = document.querySelector("#getting-started");
+const footerNote = document.querySelector("#mobile-footer-note");
 const API_ROOT = "/minimax_h3_timeline/mobile";
+const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
+const UPLOAD_SUBFOLDER = "minimax_h3_timeline_director";
 
 let sessionToken = "";
 let currentState = null;
 let revision = 0;
 let socket = null;
+let activePanel = "segments";
+let activeSegment = 0;
+let saveTimer = 0;
+let saveInFlight = false;
+let dirty = false;
+let conflict = false;
+let nodeUuid = "";
+
+const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+}[ch]));
+const uid = () => globalThis.crypto?.randomUUID?.() || "m3td-" + Date.now().toString(36) + Math.random().toString(36).slice(2,10);
+const segments = () => currentState?.segmentConfig?.segments || [];
+const groups = () => currentState?.segmentConfig?.groups || [];
+const images = () => currentState?.images || [];
+const audios = () => currentState?.audios || [];
+const segmentLabel = (segment,index) => segment?.name || "第 " + (index+1) + " 段";
+const setSyncStatus = text => { if(editorSyncStatus) editorSyncStatus.textContent = text; };
 
 function feedback(message, state = "") {
   if (!pairFeedback) return;
@@ -23,9 +49,77 @@ function feedback(message, state = "") {
 function setConnected(connected, detail = "") {
   if (connectionTitle) connectionTitle.textContent = connected ? "已连接导演台" : "尚未连接导演台";
   if (connectionDescription) connectionDescription.textContent = connected
-    ? (detail || "已连接到电脑端对应的导演台。移动编辑界面正在接入。")
-    : "请在电脑端导演台生成配对码，然后在此输入。";
+    ? (detail || "已连接到电脑端对应的导演台。")
+    : "请先在电脑端导演台生成一次性配对码。";
   if (connectionState) connectionState.textContent = connected ? "已连接" : "未连接";
+  document.body.classList.toggle("is-connected", connected);
+  if (editor) editor.hidden = !connected;
+  if (gettingStarted) gettingStarted.hidden = connected;
+  if (footerNote) footerNote.hidden = connected;
+  document.querySelector(".bottom-nav")?.classList.toggle("is-visible", connected);
+  if (connected) renderPanel();
+}
+
+function selectedSegment() {
+  const list = segments();
+  activeSegment = Math.max(0, Math.min(activeSegment, list.length - 1));
+  return list[activeSegment] || null;
+}
+
+function scheduleSave() {
+  if (!sessionToken || !currentState || conflict) return;
+  dirty = true;
+  setSyncStatus("有未同步修改…");
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 350);
+}
+
+async function saveState() {
+  if (!dirty || saveInFlight || !sessionToken || conflict) return;
+  saveInFlight = true;
+  dirty = false;
+  try {
+    const response = await fetch(API_ROOT + "/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + sessionToken },
+      body: JSON.stringify({ expected_revision: revision, state: currentState }),
+    });
+    const payload = await response.json();
+    if (response.status === 409) {
+      conflict = true;
+      dirty = false;
+      setSyncStatus("同步冲突：已暂停自动保存，请重新配对并核对两端内容。");
+      feedback("检测到电脑端与手机端同时修改，系统没有自动覆盖任何一端。", "error");
+      return;
+    }
+    if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
+    revision = Number(payload.revision) || revision + 1;
+    setSyncStatus("已同步 · 版本 " + revision);
+  } catch (error) {
+    dirty = true;
+    setSyncStatus("同步失败：" + error.message);
+  } finally {
+    saveInFlight = false;
+    if (dirty && !conflict) saveTimer = setTimeout(saveState, 700);
+  }
+}
+
+function receiveRemote(message) {
+  const nextRevision = Number(message.revision) || 0;
+  if (nextRevision <= revision) return;
+  if (dirty || saveInFlight) {
+    conflict = true;
+    dirty = false;
+    clearTimeout(saveTimer);
+    setSyncStatus("检测到另一端修改，已暂停同步以防覆盖。");
+    feedback("两端出现并发修改，请关闭旧连接后重新配对核对内容。", "error");
+    return;
+  }
+  currentState = message.state;
+  revision = nextRevision;
+  activeSegment = Math.min(activeSegment, Math.max(0, segments().length - 1));
+  setSyncStatus("电脑端已更新 · 版本 " + revision);
+  renderPanel();
 }
 
 function connectEvents(token) {
@@ -40,18 +134,23 @@ function connectEvents(token) {
     if (message.type === "ready") {
       currentState = message.state;
       revision = Number(message.revision) || 1;
-      setConnected(true, "已连接到电脑端。当前移动端编辑界面尚在开发中，请暂时不要进行编辑。");
-      feedback("连接成功。此阶段已建立安全配对和状态通道。", "success");
+      nodeUuid = message.node_uuid || nodeUuid;
+      conflict = false;
+      dirty = false;
+      setConnected(true, "已连接到电脑端。手机编辑会实时同步回对应导演台。");
+      setSyncStatus("已连接 · 版本 " + revision);
+      feedback("连接成功，手机端编辑已启用。", "success");
     } else if (message.type === "state") {
-      currentState = message.state;
-      revision = Number(message.revision) || revision;
-      feedback("已收到电脑端最新状态。", "success");
+      receiveRemote(message);
+    } else if (message.type === "paired") {
+      feedback("配对成功，正在建立实时同步。", "success");
     }
   });
   socket.addEventListener("close", () => {
     if (sessionToken) {
       setConnected(false);
-      feedback("连接已断开。请重新打开页面或重新配对。", "error");
+      setSyncStatus("连接已断开");
+      feedback("连接已断开。请检查网络，或重新配对。", "error");
     }
   });
   socket.addEventListener("error", () => feedback("实时连接失败，请确认手机和电脑能访问同一个 ComfyUI 地址。", "error"));
@@ -76,9 +175,9 @@ async function claimPairingCode() {
     sessionToken = payload.token;
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
+    nodeUuid = payload.node_uuid || "";
     sessionStorage.setItem("m3td-mobile-token", sessionToken);
-    sessionStorage.setItem("m3td-mobile-node", payload.node_uuid || "");
-    setConnected(true, "已连接到电脑端。当前移动端编辑界面尚在开发中，请暂时不要进行编辑。");
+    sessionStorage.setItem("m3td-mobile-node", nodeUuid);
     feedback("配对成功，正在建立实时连接…", "success");
     connectEvents(sessionToken);
   } catch (error) {
@@ -100,7 +199,7 @@ async function restoreSession() {
     sessionToken = saved;
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
-    setConnected(true, "已恢复与电脑端的连接。当前移动端编辑界面尚在开发中，请暂时不要进行编辑。");
+    nodeUuid = payload.node_uuid || sessionStorage.getItem("m3td-mobile-node") || "";
     connectEvents(sessionToken);
   } catch {
     sessionStorage.removeItem("m3td-mobile-token");
@@ -109,35 +208,284 @@ async function restoreSession() {
   }
 }
 
-document.querySelector("#scan-help")?.addEventListener("click", openHelp);
-document.querySelector("#close-dialog")?.addEventListener("click", closeHelp);
-document.querySelector("#confirm-dialog")?.addEventListener("click", closeHelp);
-document.querySelector("#refresh-page")?.addEventListener("click", () => window.location.reload());
-document.querySelector("#desktop-mode")?.addEventListener("click", () => {
-  window.location.href = "/";
-});
-pairButton?.addEventListener("click", claimPairingCode);
-pairInput?.addEventListener("keydown", event => {
-  if (event.key === "Enter") claimPairingCode();
-});
-pairInput?.addEventListener("input", () => {
-  pairInput.value = pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
-});
-
-helpDialog?.addEventListener("click", event => {
-  if (event.target === helpDialog) closeHelp();
-});
-
-document.addEventListener("keydown", event => {
-  if (event.key === "Escape" && helpDialog && !helpDialog.hidden) closeHelp();
-});
-
-const pairingHash = new URLSearchParams(window.location.hash.slice(1));
-const scannedCode = pairingHash.get("pair");
-if (scannedCode && pairInput) {
-  pairInput.value = scannedCode.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
-  history.replaceState(null, "", window.location.pathname + window.location.search);
-  claimPairingCode();
-} else {
-  restoreSession();
+function renderPanel() {
+  if (!currentState || !editorContent) return;
+  document.querySelectorAll(".bottom-nav [data-panel]").forEach(button => button.classList.toggle("active", button.dataset.panel === activePanel));
+  const titles = { segments:"分段编辑", assets:"素材管理", groups:"分组管理", settings:"连接设置" };
+  editorHeading.textContent = titles[activePanel] || "移动导演台";
+  if (activePanel === "segments") renderSegmentsPanel();
+  else if (activePanel === "assets") renderAssetsPanel();
+  else if (activePanel === "groups") renderGroupsPanel();
+  else renderSettingsPanel();
 }
+
+function renderSegmentPicker() {
+  return `<div class="mobile-segment-picker">${segments().map((segment,index)=>`
+    <button type="button" class="mobile-segment-chip ${index===activeSegment?"active":""} ${segment.enabled===false?"disabled":""}" data-select-mobile-segment="${index}">
+      <strong>${escapeHTML(segmentLabel(segment,index))}</strong><small>${segment.enabled===false?"已禁用":(segment.endFrame-segment.startFrame)/24+" 秒"}</small>
+    </button>`).join("")}</div>`;
+}
+
+function renderSegmentsPanel() {
+  const segment = selectedSegment();
+  if (!segment) { editorContent.innerHTML = '<p class="mobile-empty">当前没有可编辑的分段。</p>'; return; }
+  const groupOptions = ['<option value="">未分组</option>', ...groups().map(group=>`<option value="${escapeHTML(group.id)}" ${segment.groupId===group.id?"selected":""}>${escapeHTML(group.name)}</option>`)].join("");
+  const duration = Math.max(5/24, (segment.endFrame-segment.startFrame)/24);
+  editorContent.innerHTML = `
+    ${renderSegmentPicker()}
+    <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段</span></div>
+      <label class="mobile-field">分段名称<input id="segment-name" maxlength="40" value="${escapeHTML(segment.name||"第 "+(activeSegment+1)+" 段")}"></label>
+      <div class="mobile-field-row">
+        <label class="mobile-field">目标时长（秒）<input id="segment-duration" type="number" min="0.21" step="0.04" value="${duration.toFixed(2)}"></label>
+        <label class="mobile-field">所属分组<select id="segment-group">${groupOptions}</select></label>
+      </div>
+      <label class="mobile-switch"><input id="segment-enabled" type="checkbox" ${segment.enabled===false?"":"checked"}><span>启用此分段</span></label>
+      <p class="mobile-hint">时长调整沿用电脑端相同的 H3 帧对齐与后续分段联动算法。</p>
+    </section>
+    <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>本段提示词</h3><span>直接写入原始数据</span></div>
+      <textarea id="segment-prompt" class="mobile-prompt" rows="8" placeholder="输入本段的 H3 提示词…">${escapeHTML(segment.prompt||"")}</textarea>
+    </section>
+    <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>本段素材引用</h3><span>图片最多 9 个 · 音频最多 3 个</span></div>
+      <p class="mobile-hint">图片：${segment.images.length} 个　音频：${segment.audios.length} 个</p>
+      <button type="button" class="mobile-secondary full-width" data-open-assets>管理本段素材</button>
+    </section>
+    <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>全局提示词</h3><span>${segments().some(item=>String(item.prompt||"").trim())?"分段提示词模式已启用":"全局模式"}</span></div>
+      <textarea id="global-prompt" class="mobile-prompt" rows="5" placeholder="输入全局提示词…">${escapeHTML(currentState.globalPrompt||"")}</textarea>
+    </section>`;
+  editorContent.querySelectorAll("[data-select-mobile-segment]").forEach(button=>button.addEventListener("click",()=>{
+    activeSegment=Number(button.dataset.selectMobileSegment);renderPanel();
+  }));
+  editorContent.querySelector("#segment-name").addEventListener("change",event=>{
+    const value=event.target.value.trim();if(value)segment.name=value;scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#segment-duration").addEventListener("change",event=>{
+    const requested=Math.max(5/24,Number(event.target.value)||5);
+    if(!Number.isInteger(segment.startFrame)||!Number.isInteger(segment.endFrame)){
+      currentState.segmentConfig.segments=createWindows(segments(),currentState.segmentConfig.count,Math.round((currentState.selection?.duration||5)*24),currentState.segmentConfig.globalOverlapFrames||39);
+      currentState.segmentConfig.mode="timeline";
+    }
+    currentState.segmentConfig.segments=setWindowContributionDuration(segments(),activeSegment,Math.round(requested*24));
+    scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#segment-group").addEventListener("change",event=>{
+    if(event.target.value)segment.groupId=event.target.value;else delete segment.groupId;scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#segment-enabled").addEventListener("change",event=>{
+    segment.enabled=event.target.checked;scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#segment-prompt").addEventListener("input",event=>{
+    segment.prompt=event.target.value;scheduleSave();
+  });
+  editorContent.querySelector("#global-prompt").addEventListener("input",event=>{
+    currentState.globalPrompt=event.target.value;scheduleSave();
+  });
+  editorContent.querySelector("[data-open-assets]").addEventListener("click",()=>{
+    activePanel="assets";renderPanel();
+  });
+}
+
+function renderAssetsPanel() {
+  const segment=selectedSegment();
+  const imageCategories=[["character","人物"],["props","道具"],["scene","环境"]];
+  const audioCategories=[["ref","音频参考"],["music","音乐参考"]];
+  const imageCards=images().map(asset=>{
+    const category=imageCategories.find(([key])=>key===(asset.group||"character"))?.[1]||"人物";
+    const assigned=segment?.images?.some(id=>String(id)===String(asset.id));
+    return `<article class="mobile-asset-card">
+      <img src="/view?filename=${encodeURIComponent(String(asset.file).split("/").pop())}&type=input&subfolder=${encodeURIComponent(String(asset.file).split("/").slice(0,-1).join("/"))}" alt="">
+      <div class="mobile-asset-info"><strong>${escapeHTML(asset.name)}</strong><small>${category}</small>
+        <select data-image-category="${escapeHTML(asset.id)}">${imageCategories.map(([key,label])=>`<option value="${key}" ${(asset.group||"character")===key?"selected":""}>${label}</option>`).join("")}</select>
+      </div>
+      <label class="mobile-assign"><input type="checkbox" data-assign-image="${escapeHTML(asset.id)}" ${assigned?"checked":""}>加入本段</label>
+      <button type="button" class="mobile-icon-button" data-delete-image="${escapeHTML(asset.id)}" aria-label="删除图片">×</button>
+    </article>`;
+  }).join("");
+  const audioCards=audios().map(asset=>{
+    const category=audioCategories.find(([key])=>key===(asset.audioGroup||"ref"))?.[1]||"音频参考";
+    const assigned=segment?.audios?.some(id=>String(id)===String(asset.id));
+    return `<article class="mobile-asset-card audio-card">
+      <div class="mobile-audio-symbol">♫</div><div class="mobile-asset-info"><strong>${escapeHTML(asset.name)}</strong><small>${category}</small>
+        <select data-audio-category="${escapeHTML(asset.id)}">${audioCategories.map(([key,label])=>`<option value="${key}" ${(asset.audioGroup||"ref")===key?"selected":""}>${label}</option>`).join("")}</select>
+        <select data-audio-mode="${escapeHTML(asset.id)}"><option value="reference" ${asset.audioMode!=="locked"?"selected":""}>参考音频</option><option value="locked" ${asset.audioMode==="locked"?"selected":""}>锁定音频</option></select>
+      </div>
+      <label class="mobile-assign"><input type="checkbox" data-assign-audio="${escapeHTML(asset.id)}" ${assigned?"checked":""}>加入本段</label>
+      <button type="button" class="mobile-icon-button" data-delete-audio="${escapeHTML(asset.id)}" aria-label="删除音频">×</button>
+    </article>`;
+  }).join("");
+  editorContent.innerHTML = `
+    ${renderSegmentPicker()}
+    <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>上传素材</h3><span>最大 512 MB</span></div>
+      <label class="mobile-field">素材分类
+        <select id="upload-category"><option value="character">人物图片</option><option value="props">道具图片</option><option value="scene">环境图片</option><option value="ref">音频参考</option><option value="music">音乐参考</option></select>
+      </label>
+      <label class="mobile-upload-button">选择图片或音频文件<input id="mobile-upload" type="file" accept="image/*,audio/*" multiple></label>
+      <p class="mobile-hint">上传后会加入素材库；如当前只有一个分段，系统会按电脑端规则自动加入该段。</p>
+    </section>
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>图片素材（${images().length}）</h3><span>人物 / 道具 / 环境</span></div>
+      ${imageCards||'<p class="mobile-empty">还没有图片素材。</p>'}
+    </section>
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>音频素材（${audios().length}）</h3><span>参考 / 锁定</span></div>
+      ${audioCards||'<p class="mobile-empty">还没有音频素材。</p>'}
+    </section>`;
+  editorContent.querySelectorAll("[data-select-mobile-segment]").forEach(button=>button.addEventListener("click",()=>{
+    activeSegment=Number(button.dataset.selectMobileSegment);renderPanel();
+  }));
+  editorContent.querySelector("#mobile-upload").addEventListener("change",async event=>{
+    const category=editorContent.querySelector("#upload-category").value;
+    for(const file of Array.from(event.target.files||[])){
+      await uploadAsset(file,["ref","music"].includes(category)?"audio":"image",category);
+    }
+    renderPanel();
+  });
+  editorContent.querySelectorAll("[data-image-category]").forEach(select=>select.addEventListener("change",()=>{
+    const asset=images().find(item=>String(item.id)===select.dataset.imageCategory);if(asset)asset.group=select.value;scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-audio-category]").forEach(select=>select.addEventListener("change",()=>{
+    const asset=audios().find(item=>String(item.id)===select.dataset.audioCategory);if(asset)asset.audioGroup=select.value;scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-audio-mode]").forEach(select=>select.addEventListener("change",()=>{
+    const asset=audios().find(item=>String(item.id)===select.dataset.audioMode);if(asset)asset.audioMode=select.value;scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-assign-image]").forEach(input=>input.addEventListener("change",()=>{
+    const id=input.dataset.assignImage;if(!segment)return;
+    segment.images=segment.images||[];
+    if(input.checked){if(segment.images.length>=9){input.checked=false;feedback("每段最多引用 9 个图片素材。","error");return;}if(!segment.images.some(item=>String(item)===id))segment.images.push(id);}
+    else segment.images=segment.images.filter(item=>String(item)!==id);
+    scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-assign-audio]").forEach(input=>input.addEventListener("change",()=>{
+    const id=input.dataset.assignAudio;if(!segment)return;
+    segment.audios=segment.audios||[];
+    if(input.checked){if(segment.audios.length>=3){input.checked=false;feedback("每段最多引用 3 个音频素材。","error");return;}if(!segment.audios.some(item=>String(item)===id))segment.audios.push(id);}
+    else segment.audios=segment.audios.filter(item=>String(item)!==id);
+    scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-delete-image]").forEach(button=>button.addEventListener("click",()=>{
+    const id=button.dataset.deleteImage;currentState.images=images().filter(item=>String(item.id)!==id);
+    for(const item of segments())item.images=(item.images||[]).filter(value=>String(value)!==id);
+    scheduleSave();renderPanel();
+  }));
+  editorContent.querySelectorAll("[data-delete-audio]").forEach(button=>button.addEventListener("click",()=>{
+    const id=button.dataset.deleteAudio;currentState.audios=audios().filter(item=>String(item.id)!==id);
+    for(const item of segments())item.audios=(item.audios||[]).filter(value=>String(value)!==id);
+    scheduleSave();renderPanel();
+  }));
+}
+
+async function uploadAsset(file,kind,category) {
+  if(!file || !sessionToken)return;
+  if(file.size<=0 || file.size>MAX_UPLOAD_BYTES){feedback(file.size>MAX_UPLOAD_BYTES?"文件超过 512 MB 限制。":"文件为空。","error");return;}
+  const serverName=Date.now()+"_"+Math.random().toString(36).slice(2,7)+"_"+file.name.replace(/[^\w.()\-\u4e00-\u9fff]+/gu,"_");
+  const data=new FormData();
+  data.append("image",file,serverName);data.append("type","input");data.append("subfolder",UPLOAD_SUBFOLDER);
+  setSyncStatus("正在上传 "+file.name+"…");
+  try{
+    const upload=await fetch("/upload/image",{method:"POST",body:data});
+    const uploaded=await upload.json();
+    if(!upload.ok)throw new Error(uploaded.error||("上传失败 HTTP "+upload.status));
+    const filename=[uploaded.subfolder,uploaded.name].filter(Boolean).join("/");
+    const infoResponse=await fetch("/minimax_h3_timeline/media_info",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({filename,kind})
+    });
+    const info=await infoResponse.json();
+    if(!infoResponse.ok||info.error)throw new Error(info.error||"媒体检查失败");
+    if(kind==="image"){
+      currentState.images.push({id:uid(),file:info.filename,name:file.name,width:info.width||0,height:info.height||0,group:category});
+      const first=segments().length===1?segments()[0]:null;
+      if(first && first.images.length<9)first.images.push(currentState.images.at(-1).id);
+    }else{
+      if(!info.hasAudio)throw new Error("文件中没有可用音轨");
+      currentState.audios.push({id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference",audioGroup:category});
+      const first=segments().length===1?segments()[0]:null;
+      if(first && first.audios.length<3)first.audios.push(currentState.audios.at(-1).id);
+    }
+    scheduleSave();setSyncStatus("上传完成，等待同步…");
+  }catch(error){feedback("上传失败："+error.message,"error");setSyncStatus("上传失败");}
+}
+
+function renderGroupsPanel() {
+  const rows=groups().map(group=>{
+    const members=segments().map((segment,index)=>({segment,index})).filter(item=>item.segment.groupId===group.id);
+    return `<section class="mobile-card">
+      <div class="mobile-card-heading"><h3>${escapeHTML(group.name)}</h3><span>${members.length} 个分段</span></div>
+      <label class="mobile-field">分组名称<input data-group-name="${escapeHTML(group.id)}" maxlength="40" value="${escapeHTML(group.name)}"></label>
+      <div class="mobile-group-members">${segments().map((segment,index)=>`
+        <label><input type="checkbox" data-group-member="${index}" data-group-id="${escapeHTML(group.id)}" ${segment.groupId===group.id?"checked":""}>${escapeHTML(segmentLabel(segment,index))}</label>`).join("")}</div>
+      <button type="button" class="mobile-danger" data-dissolve-group="${escapeHTML(group.id)}">解散分组</button>
+    </section>`;
+  }).join("");
+  editorContent.innerHTML = `
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>新建分组</h3><span>按幕或场景整理分段</span></div>
+      <div class="mobile-field-row"><label class="mobile-field">分组名称<input id="new-group-name" maxlength="40" placeholder="例如：第一幕"></label><button class="mobile-primary" type="button" id="create-group">创建</button></div>
+    </section>
+    ${rows||'<p class="mobile-empty">还没有分组。创建分组后可勾选分段进行归类。</p>'}`;
+  editorContent.querySelector("#create-group").addEventListener("click",()=>{
+    const input=editorContent.querySelector("#new-group-name"),name=input.value.trim();
+    if(!name){feedback("请先输入分组名称。","error");return;}
+    groups().push({id:uid(),name});scheduleSave();renderPanel();
+  });
+  editorContent.querySelectorAll("[data-group-name]").forEach(input=>input.addEventListener("change",()=>{
+    const group=groups().find(item=>String(item.id)===input.dataset.groupName);if(group){group.name=input.value.trim()||group.name;scheduleSave();renderPanel();}
+  }));
+  editorContent.querySelectorAll("[data-group-member]").forEach(input=>input.addEventListener("change",()=>{
+    const segment=segments()[Number(input.dataset.groupMember)],groupId=input.dataset.groupId;
+    if(!segment)return;
+    if(input.checked)segment.groupId=groupId;else if(segment.groupId===groupId)delete segment.groupId;
+    scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-dissolve-group]").forEach(button=>button.addEventListener("click",()=>{
+    const id=button.dataset.dissolveGroup;
+    for(const segment of segments())if(segment.groupId===id)delete segment.groupId;
+    currentState.segmentConfig.groups=groups().filter(group=>String(group.id)!==id);
+    scheduleSave();renderPanel();
+  }));
+}
+
+function renderSettingsPanel() {
+  editorContent.innerHTML = `
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>同步状态</h3><span>实时连接</span></div>
+      <p class="mobile-settings-status">${conflict?"存在冲突，已暂停同步":dirty?"有待保存的修改":"连接正常"}</p>
+      <p class="mobile-hint">当前版本：${revision}<br>节点标识：<code>${escapeHTML(nodeUuid||"未知")}</code></p>
+      <button type="button" class="mobile-secondary full-width" id="save-now">立即同步</button>
+    </section>
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>重新连接</h3></div>
+      <p class="mobile-hint">如果两端同时修改导致冲突，请先确认保留哪一端的数据，再重新配对。重新配对会撤销该节点旧的手机连接。</p>
+      <button type="button" class="mobile-danger" id="disconnect-mobile">断开手机连接</button>
+    </section>`;
+  editorContent.querySelector("#save-now").addEventListener("click",()=>{
+    if(conflict){feedback("当前存在同步冲突，请重新配对。","error");return;}
+    clearTimeout(saveTimer);saveState();
+  });
+  editorContent.querySelector("#disconnect-mobile").addEventListener("click",()=>{
+    clearTimeout(saveTimer);socket?.close();sessionStorage.removeItem("m3td-mobile-token");sessionStorage.removeItem("m3td-mobile-node");
+    sessionToken="";currentState=null;revision=0;setConnected(false);feedback("手机端已断开。","success");
+  });
+}
+
+document.querySelector("#scan-help")?.addEventListener("click",()=>{helpDialog.hidden=false;});
+document.querySelector("#close-dialog")?.addEventListener("click",()=>{helpDialog.hidden=true;});
+document.querySelector("#confirm-dialog")?.addEventListener("click",()=>{helpDialog.hidden=true;});
+document.querySelector("#refresh-page")?.addEventListener("click",()=>window.location.reload());
+document.querySelector("#desktop-mode")?.addEventListener("click",()=>{window.location.href="/";});
+pairButton?.addEventListener("click",claimPairingCode);
+pairInput?.addEventListener("keydown",event=>{if(event.key==="Enter")claimPairingCode();});
+pairInput?.addEventListener("input",()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);});
+document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.addEventListener("click",()=>{
+  activePanel=button.dataset.panel;renderPanel();
+}));
+helpDialog?.addEventListener("click",event=>{if(event.target===helpDialog)helpDialog.hidden=true;});
+document.addEventListener("keydown",event=>{if(event.key==="Escape"&&helpDialog&&!helpDialog.hidden)helpDialog.hidden=true;});
+
+const pairingHash=new URLSearchParams(window.location.hash.slice(1));
+const scannedCode=pairingHash.get("pair");
+if(scannedCode&&pairInput){
+  pairInput.value=scannedCode.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);
+  history.replaceState(null,"",window.location.pathname+window.location.search);
+  claimPairingCode();
+}else restoreSession();
