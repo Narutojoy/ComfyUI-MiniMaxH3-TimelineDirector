@@ -256,8 +256,10 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
             _purge_expired()
             session = next((
                 item for item in _sessions.values()
-                if secrets.compare_digest(item.token_hash, digest)
-                or secrets.compare_digest(getattr(item, "mobile_token_hash", ""), digest)
+                if token and (
+                    secrets.compare_digest(item.token_hash, digest)
+                    or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))
+                )
             ), None)
         if session is None:
             await socket.close(code=4003, message=b"Invalid session")
