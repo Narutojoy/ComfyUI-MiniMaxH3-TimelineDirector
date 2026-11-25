@@ -234,6 +234,8 @@ async def mobile_state_put(request: web.Request) -> web.Response:
 
 @PromptServer.instance.routes.get("/minimax_h3_timeline/mobile/events")
 async def mobile_events(request: web.Request) -> web.StreamResponse:
+    if not _same_origin(request):
+        raise web.HTTPForbidden(text="WebSocket must use the same ComfyUI origin")
     # Browsers cannot attach Authorization headers to WebSocket handshakes.
     # Authenticate with the first WebSocket message instead of leaking tokens
     # into URLs, browser history, or access logs.
