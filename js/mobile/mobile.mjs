@@ -441,6 +441,10 @@ async function uploadAsset(file,kind,category) {
       currentState.images.push({id:uid(),file:info.filename,name:file.name,width:info.width||0,height:info.height||0,group:category});
       const first=segments().length===1?segments()[0]:null;
       if(first && first.images.length<9)first.images.push(currentState.images.at(-1).id);
+    }else if(kind==="video"){
+      if(!info.hasVideo)throw new Error("视频文件中没有可用画面轨道");
+      const start=videos().reduce((max,clip)=>Math.max(max,Number(clip.start||0)+Number(clip.duration||0)),0);
+      currentState.videoClips.push({id:uid(),file:info.filename,name:file.name,start,duration:Math.max(5/24,Number(info.duration)||5),trimStart:0,sourceDuration:Number(info.duration)||5,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth:Number(info.width)||832,referenceHeight:Number(info.height)||480,peaks:[],proxy:""});
     }else{
       if(!info.hasAudio)throw new Error("文件中没有可用音轨");
       currentState.audios.push({id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference",audioGroup:category});
