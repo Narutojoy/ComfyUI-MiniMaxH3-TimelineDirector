@@ -62,9 +62,19 @@ function setConnected(connected, detail = "") {
   if (connected) renderPanel();
 }
 
+function syncActiveSelection() {
+  const segment=segments()[activeSegment];
+  if(!segment)return;
+  currentState.segmentConfig.activeIndex=activeSegment;
+  if(Number.isInteger(segment.startFrame)&&Number.isInteger(segment.endFrame)){
+    currentState.selection={start:segment.startFrame/24,duration:(segment.endFrame-segment.startFrame)/24};
+  }
+}
+
 function selectedSegment() {
   const list = segments();
   activeSegment = Math.max(0, Math.min(activeSegment, list.length - 1));
+  syncActiveSelection();
   return list[activeSegment] || null;
 }
 
@@ -143,6 +153,7 @@ function connectEvents(token) {
     if (message.type === "ready") {
       currentState = message.state;
       revision = Number(message.revision) || 1;
+      activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
       nodeUuid = message.node_uuid || nodeUuid;
       conflict = false;
       dirty = false;
@@ -185,6 +196,7 @@ async function claimPairingCode() {
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
     nodeUuid = payload.node_uuid || "";
+    activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     sessionStorage.setItem("m3td-mobile-token", sessionToken);
     sessionStorage.setItem("m3td-mobile-node", nodeUuid);
     feedback("配对成功，正在建立实时连接…", "success");
@@ -209,6 +221,7 @@ async function restoreSession() {
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
     nodeUuid = payload.node_uuid || sessionStorage.getItem("m3td-mobile-node") || "";
+    activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     connectEvents(sessionToken);
   } catch {
     sessionStorage.removeItem("m3td-mobile-token");
@@ -278,7 +291,7 @@ function renderSegmentsPanel() {
       <textarea id="global-prompt" class="mobile-prompt" rows="5" placeholder="输入全局提示词…">${escapeHTML(currentState.globalPrompt||"")}</textarea>
     </section>`;
   editorContent.querySelectorAll("[data-select-mobile-segment]").forEach(button=>button.addEventListener("click",()=>{
-    activeSegment=Number(button.dataset.selectMobileSegment);renderPanel();
+    activeSegment=Number(button.dataset.selectMobileSegment);syncActiveSelection();scheduleSave();renderPanel();
   }));
   editorContent.querySelector("#apply-segment-count").addEventListener("click",()=>{
     const count=Math.max(1,Math.min(64,Math.floor(Number(editorContent.querySelector("#segment-count").value)||1)));
@@ -289,7 +302,7 @@ function renderSegmentsPanel() {
     const used=new Set(next.map(item=>String(item.groupId||"")).filter(Boolean));
     currentState.segmentConfig={...currentState.segmentConfig,count,mode:"timeline",groups:groups().filter(group=>used.has(String(group.id))),segments:next};
     activeSegment=Math.min(activeSegment,count-1);
-    scheduleSave();renderPanel();
+    syncActiveSelection();scheduleSave();renderPanel();
   });
   editorContent.querySelector("#apply-global-overlap").addEventListener("click",()=>{
     const requested=Math.max(0,Math.floor(Number(editorContent.querySelector("#global-overlap").value)||0));
@@ -299,7 +312,7 @@ function renderSegmentsPanel() {
     }
     currentState.segmentConfig.globalOverlapFrames=effective;
     currentState.segmentConfig.segments=applyGlobalOverlapFrames(segments(),effective);
-    scheduleSave();renderPanel();
+    syncActiveSelection();scheduleSave();renderPanel();
   });
   editorContent.querySelector("#segment-name").addEventListener("change",event=>{
     const value=event.target.value.trim();if(value)segment.name=value;scheduleSave();renderPanel();
@@ -311,7 +324,7 @@ function renderSegmentsPanel() {
       currentState.segmentConfig.mode="timeline";
     }
     currentState.segmentConfig.segments=setWindowContributionDuration(segments(),activeSegment,Math.round(requested*24));
-    scheduleSave();renderPanel();
+    syncActiveSelection();scheduleSave();renderPanel();
   });
   editorContent.querySelector("#segment-group").addEventListener("change",event=>{
     if(event.target.value)segment.groupId=event.target.value;else delete segment.groupId;scheduleSave();renderPanel();
