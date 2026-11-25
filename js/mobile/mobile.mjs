@@ -30,6 +30,7 @@ let videoDrag = null;
 const previewProxyRequests = new Set();
 let saveTimer = 0;
 let saveInFlight = false;
+let pendingStateJson = "";
 let dirty = false;
 let conflict = false;
 let nodeUuid = "";
@@ -96,11 +97,12 @@ async function saveState() {
   if (!dirty || saveInFlight || !sessionToken || conflict) return;
   saveInFlight = true;
   dirty = false;
+  pendingStateJson = JSON.stringify(currentState);
   try {
     const response = await fetch(API_ROOT + "/state", {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: "Bearer " + sessionToken },
-      body: JSON.stringify({ expected_revision: revision, state: currentState }),
+      body: JSON.stringify({ expected_revision: revision, state: JSON.parse(pendingStateJson) }),
     });
     const payload = await response.json();
     if (response.status === 409) {
@@ -118,6 +120,7 @@ async function saveState() {
     setSyncStatus("同步失败：" + error.message);
   } finally {
     saveInFlight = false;
+    pendingStateJson = "";
     if (dirty && !conflict) saveTimer = setTimeout(saveState, 700);
   }
 }
@@ -127,7 +130,7 @@ function receiveRemote(message) {
   if (nextRevision <= revision) return;
   // The relay broadcasts writes to every socket, including the writer. Treat
   // our own in-flight save echo as an acknowledgement, not a concurrent edit.
-  if (saveInFlight && JSON.stringify(message.state) === JSON.stringify(currentState)) {
+  if (saveInFlight && JSON.stringify(message.state) === pendingStateJson) {
     revision = nextRevision;
     setSyncStatus("已同步 · 版本 " + revision);
     return;
