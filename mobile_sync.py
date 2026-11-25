@@ -69,8 +69,11 @@ def _same_origin(request: web.Request) -> bool:
 async def _read_json(request: web.Request) -> dict[str, Any]:
     if request.content_length is not None and request.content_length > MAX_REQUEST_BYTES:
         raise web.HTTPRequestEntityTooLarge(max_size=MAX_REQUEST_BYTES, actual_size=request.content_length)
+    raw = await request.read()
+    if len(raw) > MAX_REQUEST_BYTES:
+        raise web.HTTPRequestEntityTooLarge(max_size=MAX_REQUEST_BYTES, actual_size=len(raw))
     try:
-        value = await request.json()
+        value = json.loads(raw.decode("utf-8"))
     except Exception as exc:
         raise ValueError("request body must be valid JSON") from exc
     if not isinstance(value, dict):
