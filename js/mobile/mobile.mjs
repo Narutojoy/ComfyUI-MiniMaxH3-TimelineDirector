@@ -241,6 +241,18 @@ function renderSegmentsPanel() {
   editorContent.innerHTML = `
     ${renderSegmentPicker()}
     <section class="mobile-card">
+      <div class="mobile-card-heading"><h3>分段数量与重叠</h3><span>最多 64 段</span></div>
+      <div class="mobile-field-row">
+        <label class="mobile-field">分段数量<input id="segment-count" type="number" min="1" max="64" step="1" value="${segments().length}"></label>
+        <label class="mobile-field">全局重叠帧<input id="global-overlap" type="number" min="0" max="3587" step="1" value="${currentState.segmentConfig.globalOverlapFrames||39}"></label>
+      </div>
+      <div class="mobile-field-row">
+        <button type="button" class="mobile-secondary" id="apply-segment-count">应用分段数量</button>
+        <button type="button" class="mobile-secondary" id="apply-global-overlap">应用全局重叠</button>
+      </div>
+      <p class="mobile-hint">分段数量和重叠计算复用电脑端的 H3 帧对齐规则。</p>
+    </section>
+    <section class="mobile-card">
       <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段</span></div>
       <label class="mobile-field">分段名称<input id="segment-name" maxlength="40" value="${escapeHTML(segment.name||"第 "+(activeSegment+1)+" 段")}"></label>
       <div class="mobile-field-row">
@@ -266,6 +278,27 @@ function renderSegmentsPanel() {
   editorContent.querySelectorAll("[data-select-mobile-segment]").forEach(button=>button.addEventListener("click",()=>{
     activeSegment=Number(button.dataset.selectMobileSegment);renderPanel();
   }));
+  editorContent.querySelector("#apply-segment-count").addEventListener("click",()=>{
+    const count=Math.max(1,Math.min(64,Math.floor(Number(editorContent.querySelector("#segment-count").value)||1)));
+    const previous=segments();
+    const validGroups=new Set(groups().map(group=>String(group.id)));
+    const next=createWindows(previous,count,(currentState.selection?.duration||5)*24,currentState.segmentConfig.globalOverlapFrames||39);
+    for(const item of next)if(item.groupId&&!validGroups.has(String(item.groupId)))delete item.groupId;
+    const used=new Set(next.map(item=>String(item.groupId||"")).filter(Boolean));
+    currentState.segmentConfig={...currentState.segmentConfig,count,mode:"timeline",groups:groups().filter(group=>used.has(String(group.id))),segments:next};
+    activeSegment=Math.min(activeSegment,count-1);
+    scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#apply-global-overlap").addEventListener("click",()=>{
+    const requested=Math.max(0,Math.floor(Number(editorContent.querySelector("#global-overlap").value)||0));
+    const effective=[0,1,...Array.from({length:Math.max(0,Math.floor((3587-5)/17)+1)},(_,i)=>5+17*i)].reduce((best,n)=>n<=3587&&Math.abs(n-requested)<Math.abs(best-requested)?n:best,0);
+    if(!currentState.segmentConfig.segments.every(item=>Number.isInteger(item.startFrame)&&Number.isInteger(item.endFrame))){
+      currentState.segmentConfig.segments=createWindows(segments(),segments().length,(currentState.selection?.duration||5)*24,currentState.segmentConfig.globalOverlapFrames||39);
+    }
+    currentState.segmentConfig.globalOverlapFrames=effective;
+    currentState.segmentConfig.segments=applyGlobalOverlapFrames(segments(),effective);
+    scheduleSave();renderPanel();
+  });
   editorContent.querySelector("#segment-name").addEventListener("change",event=>{
     const value=event.target.value.trim();if(value)segment.name=value;scheduleSave();renderPanel();
   });
