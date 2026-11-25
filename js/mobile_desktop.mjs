@@ -157,6 +157,13 @@ export function attachMobilePairing(ui) {
       const payload = await response.json();
       if (requestGeneration !== connectionGeneration) return;
       if (response.status === 409) {
+        if (JSON.stringify(payload.state) === submittedState) {
+          revision = Number(payload.revision) || revision;
+          localDirty = JSON.stringify(ui.state) !== submittedState;
+          if (localDirty) localQueued = true;
+          else setStatus("连接恢复，确认服务器已保存相同内容 · 版本 " + revision);
+          return;
+        }
         conflict = true;
         setStatus("检测到并发修改。为避免覆盖，已暂停同步；请核对两端内容后重新配对。");
         return;
