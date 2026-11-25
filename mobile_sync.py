@@ -147,10 +147,24 @@ async def mobile_pair_create(request: web.Request) -> web.Response:
         state=state,
         token_hash=hashlib.sha256(token.encode("utf-8")).hexdigest(),
     )
+    old_sockets: list[web.WebSocketResponse] = []
     async with _lock:
         _purge_expired()
+        # A node has one active mobile pairing at a time. Re-pairing revokes
+        # its previous tokens and makes any older unclaimed code unusable.
+        for old_id, old_session in list(_sessions.items()):
+            if old_session.node_uuid != node_uuid:
+                continue
+            _sessions.pop(old_id, None)
+            old_sockets.extend(old_session.sockets)
+            for old_code, (bound_id, _expires) in list(_pair_codes.items()):
+                if bound_id == old_id:
+                    _pair_codes.pop(old_code, None)
         _sessions[session_id] = session
         _pair_codes[code] = (session_id, time.time() + PAIR_TTL_SECONDS)
+    for old_socket in old_sockets:
+        if not old_socket.closed:
+            await old_socket.close(code=4002, message=b"Pairing replaced")
     return web.json_response({
         "code": code,
         "token": token,
