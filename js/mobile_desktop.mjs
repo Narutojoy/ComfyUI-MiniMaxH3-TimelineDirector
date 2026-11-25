@@ -230,8 +230,18 @@ export function attachMobilePairing(ui) {
           }
         }
       });
-      socket.addEventListener("close", () => {
-        if (token && !conflict) setStatus("手机连接已断开。");
+      socket.addEventListener("close", event => {
+        if (event.code === 4002 || event.code === 4003) {
+          token = "";
+          clearTimeout(pendingTimer);
+          pendingTimer = 0;
+          localQueued = false;
+          pendingStateJson = "";
+          conflict = false;
+          setStatus("手机授权已撤销或配对已被替换，请重新配对。");
+        } else if (token && !conflict) {
+          setStatus("手机连接已断开。网络恢复后请重新配对。");
+        }
       });
       socket.addEventListener("error", () => setStatus("实时连接失败，请检查同一 ComfyUI 地址是否可访问。"));
     } catch (error) {
@@ -244,7 +254,17 @@ export function attachMobilePairing(ui) {
   ui.root.addEventListener("DOMNodeRemoved", event => {
     if (event.target === ui.root) {
       clearTimeout(pendingTimer);
+      pendingTimer = 0;
+      localQueued = false;
+      const activeToken = token;
+      token = "";
       socket?.close();
+      if (activeToken) {
+        fetch(API_ROOT + "/session/revoke", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + activeToken },
+        }).catch(() => {});
+      }
     }
   }, { once: true });
 }
