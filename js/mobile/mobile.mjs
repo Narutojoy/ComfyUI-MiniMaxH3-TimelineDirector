@@ -486,7 +486,7 @@ function renderAssetsPanel() {
   playheadInput?.addEventListener("input",event=>{
     mobilePlayhead=Number(event.target.value)||0;
     const marker=editorContent.querySelector(".mobile-timeline-playhead");
-    if(marker)marker.style.left=(mobilePlayhead*44)+"px";
+    if(marker)marker.style.left=(mobilePlayhead*mobileTimelineScale)+"px";
     const label=editorContent.querySelector(".mobile-playhead-control");
     if(label)label.firstChild.textContent="播放位置 · "+mobilePlayhead.toFixed(2)+" 秒";
     const clip=videos().find(item=>String(item.id)===String(selectedVideoId));
