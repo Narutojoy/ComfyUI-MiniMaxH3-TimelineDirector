@@ -38,7 +38,7 @@ function ensureDialog() {
       <button type="button" data-close style="position:absolute;right:14px;top:10px;border:0;background:none;color:#cbd5e1;font-size:26px">×</button>
       <div style="color:#93c5fd;font-size:11px;letter-spacing:.14em;font-weight:700">MOBILE DIRECTOR</div>
       <h2 style="margin:8px 0 6px;font-size:22px">手机配对</h2>
-      <p style="color:#aab6c8;margin:0 0 16px">在手机浏览器打开下方页面，输入一次性配对码。配对码 3 分钟内有效且只能使用一次。</p>
+      <p style="color:#aab6c8;margin:0 0 16px">用手机扫描二维码即可自动配对，也可打开下方页面手动输入配对码。配对码 3 分钟内有效且只能使用一次。</p>
       <label style="display:block;color:#aab6c8;font-size:12px;margin-bottom:5px">手机页面地址</label>
       <input data-url readonly style="box-sizing:border-box;width:100%;padding:10px;border-radius:8px;border:1px solid #475569;background:#0d1320;color:#dbeafe">
       <div data-qr style="display:flex;justify-content:center;padding:14px 0 4px"></div>
