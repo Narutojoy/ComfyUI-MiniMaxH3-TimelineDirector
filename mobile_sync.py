@@ -36,6 +36,7 @@ class MobileSession:
     node_uuid: str
     state: dict[str, Any]
     token_hash: str
+    mobile_token_hash: str = ""
     revision: int = 1
     expires_at: float = field(default_factory=lambda: time.time() + SESSION_TTL_SECONDS)
     sockets: set[web.WebSocketResponse] = field(default_factory=set)
@@ -100,7 +101,7 @@ async def _get_session(request: web.Request) -> MobileSession:
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     async with _lock:
         _purge_expired()
-        session = next((item for item in _sessions.values() if secrets.compare_digest(item.token_hash, digest)), None)
+        session = next((\n            item for item in _sessions.values()\n            if secrets.compare_digest(item.token_hash, digest)\n            or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))\n        ), None)
     if session is None:
         raise web.HTTPUnauthorized(text="Pairing expired or invalid")
     session.expires_at = time.time() + SESSION_TTL_SECONDS
