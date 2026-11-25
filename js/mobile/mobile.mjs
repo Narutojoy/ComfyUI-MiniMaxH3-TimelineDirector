@@ -455,6 +455,11 @@ function renderAssetsPanel() {
       try{previewElement.currentTime=Math.min(previewElement.duration-.01,Number(previewClip.trimStart||0)+offset);}catch{}
     });
     previewElement.addEventListener("timeupdate",()=>{
+      const sourceEnd=Number(previewClip.trimStart||0)+Number(previewClip.duration||0);
+      if(previewElement.currentTime>=sourceEnd-1/24){
+        try{previewElement.currentTime=sourceEnd;}catch{}
+        previewElement.pause();
+      }
       mobilePlayhead=Number(previewClip.start||0)+previewElement.currentTime-Number(previewClip.trimStart||0);
       const slider=editorContent.querySelector("#video-playhead");
       if(slider)slider.value=String(mobilePlayhead);
