@@ -274,9 +274,10 @@ async def mobile_session_revoke(request: web.Request) -> web.Response:
     async with _lock:
         _purge_expired()
         match = next(((sid, item) for sid, item in _sessions.items()
-                      if item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest)), None)
+                      if secrets.compare_digest(item.token_hash, digest)
+                      or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))), None)
         if match is None:
-            raise web.HTTPUnauthorized(text="Mobile pairing is already revoked or expired")
+            raise web.HTTPUnauthorized(text="Pairing is already revoked or expired")
         session_id, session = match
         _sessions.pop(session_id, None)
         sockets.extend(session.sockets)
