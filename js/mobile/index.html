@@ -30,6 +30,14 @@
           </div>
           <span class="connection-state">未连接</span>
         </div>
+        <div class="pair-form">
+          <label for="pair-code">输入电脑端显示的一次性配对码</label>
+          <div class="pair-entry">
+            <input id="pair-code" type="text" inputmode="text" autocomplete="one-time-code" maxlength="8" placeholder="8 位配对码" aria-label="8 位配对码">
+            <button class="primary-button" id="connect-pair" type="button">连接</button>
+          </div>
+          <p class="pair-feedback" id="pair-feedback" role="status" aria-live="polite"></p>
+        </div>
         <div class="connect-actions">
           <button class="primary-button" id="scan-help" type="button">如何连接</button>
           <button class="secondary-button" id="refresh-page" type="button">刷新页面</button>
