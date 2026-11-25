@@ -44,43 +44,29 @@
         </div>
       </section>
 
-      <section class="feature-section" aria-labelledby="feature-heading">
+      <section class="feature-section" id="mobile-editor" hidden aria-label="移动导演台">
         <div class="section-heading">
-          <div><span class="eyebrow">WORKSPACE</span><h2 id="feature-heading">移动工作区</h2></div>
-          <span class="section-note">连接后使用</span>
+          <div><span class="eyebrow">WORKSPACE</span><h2 id="editor-heading">分段编辑</h2></div>
+          <span class="section-note" id="editor-sync-status">等待同步</span>
         </div>
-        <div class="workspace-grid">
-          <button class="workspace-tile" type="button" data-panel="segments" disabled>
-            <span class="tile-icon">▤</span><strong>分段</strong><small>编辑镜头与提示词</small>
-          </button>
-          <button class="workspace-tile" type="button" data-panel="assets" disabled>
-            <span class="tile-icon">▧</span><strong>素材</strong><small>人物、道具、环境与音频</small>
-          </button>
-          <button class="workspace-tile" type="button" data-panel="groups" disabled>
-            <span class="tile-icon">▦</span><strong>分组</strong><small>整理幕与镜头顺序</small>
-          </button>
-          <button class="workspace-tile" type="button" data-panel="settings" disabled>
-            <span class="tile-icon">⚙</span><strong>设置</strong><small>连接与同步状态</small>
-          </button>
-        </div>
+        <div id="editor-content"></div>
       </section>
-
-      <section class="steps-section">
+      <section class="steps-section" id="getting-started">
         <div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>首次连接</h2></div></div>
         <ol class="steps-list">
           <li><span>1</span><div><strong>在电脑端打开 ComfyUI</strong><p>载入包含 MiniMax H3 导演台节点的工作流。</p></div></li>
           <li><span>2</span><div><strong>打开移动端配对</strong><p>电脑端生成一次性配对码。</p></div></li>
-          <li><span>3</span><div><strong>手机扫描二维码，或手动输入配对码</strong><p>连接后即可编辑对应工作流中的导演台数据。</p></div></li>
+          <li><span>3</span><div><strong>手机扫描二维码，或手动输入配对码</strong><p>连接后可编辑对应工作流中的导演台数据。</p></div></li>
         </ol>
       </section>
-      <p class="footer-note">已接入配对和实时状态通道；移动端编辑功能仍在开发中，当前请勿在手机端进行编辑。</p>
+      <p class="footer-note" id="mobile-footer-note">配对后即可在手机端编辑，数据会同步回电脑端导演台。</p>
     </main>
   </div>
   <nav class="bottom-nav" aria-label="移动工作区导航">
-    <span class="nav-item active"><span>▤</span>分段</span>
-    <span class="nav-item"><span>▧</span>素材</span>
-    <span class="nav-item"><span>▦</span>分组</span>
-    <span class="nav-item"><span>⚙</span>设置</span>
+    <button class="nav-item active" type="button" data-panel="segments"><span>▤</span>分段</button>
+    <button class="nav-item" type="button" data-panel="assets"><span>▧</span>素材</button>
+    <button class="nav-item" type="button" data-panel="groups"><span>▦</span>分组</button>
+    <button class="nav-item" type="button" data-panel="settings"><span>⚙</span>设置</button>
   </nav>
   <div class="dialog-backdrop" id="connect-dialog" hidden>
     <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
