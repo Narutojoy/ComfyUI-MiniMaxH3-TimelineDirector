@@ -788,6 +788,10 @@ document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.add
 helpDialog?.addEventListener("click",event=>{if(event.target===helpDialog)helpDialog.hidden=true;});
 document.addEventListener("keydown",event=>{if(event.key==="Escape"&&helpDialog&&!helpDialog.hidden)helpDialog.hidden=true;});
 
+const deviceModeHint=document.querySelector("#device-mode-hint");
+const detectedMobile=typeof navigator.userAgentData?.mobile==="boolean"?navigator.userAgentData.mobile:/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+if(deviceModeHint)deviceModeHint.hidden=detectedMobile;
+
 const pairingHash=new URLSearchParams(window.location.hash.slice(1));
 const scannedCode=pairingHash.get("pair");
 if(scannedCode&&pairInput){
