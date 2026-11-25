@@ -338,7 +338,7 @@ function renderAssetsPanel() {
     const category=imageCategories.find(([key])=>key===(asset.group||"character"))?.[1]||"人物";
     const assigned=segment?.images?.some(id=>String(id)===String(asset.id));
     return `<article class="mobile-asset-card">
-      <img src="/view?filename=${encodeURIComponent(String(asset.file).split("/").pop())}&type=input&subfolder=${encodeURIComponent(String(asset.file).split("/").slice(0,-1).join("/"))}" alt="">
+      <img src="${escapeHTML(mediaURL(asset.file))}" alt="">
       <div class="mobile-asset-info"><strong>${escapeHTML(asset.name)}</strong><small>${category}</small>
         <select data-image-category="${escapeHTML(asset.id)}">${imageCategories.map(([key,label])=>`<option value="${key}" ${(asset.group||"character")===key?"selected":""}>${label}</option>`).join("")}</select>
       </div>
