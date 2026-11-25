@@ -325,7 +325,14 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         if session is None:
             await socket.close(code=4003, message=b"Invalid session")
             return socket
-        session.sockets.add(socket)
+        async with _lock:
+            if not any(item is session for item in _sessions.values()):
+                session = None
+            else:
+                session.sockets.add(socket)
+        if session is None:
+            await socket.close(code=4003, message=b"Session revoked")
+            return socket
         await socket.send_json({"type": "ready", "revision": session.revision, "state": session.state})
         async for message in socket:
             if message.type == WSMsgType.ERROR:
