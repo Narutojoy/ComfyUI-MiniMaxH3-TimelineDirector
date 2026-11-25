@@ -1,4 +1,4 @@
-import { createWindows, setWindowContributionDuration, applyGlobalOverlapFrames } from "../segment_windows.mjs";
+import { createWindows, setWindowContributionDuration, applyGlobalOverlapFrames, editWindow } from "../segment_windows.mjs";
 
 const helpDialog = document.querySelector("#connect-dialog");
 const pairInput = document.querySelector("#pair-code");
@@ -275,9 +275,10 @@ function renderSegmentsPanel() {
       <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段</span></div>
       <label class="mobile-field">分段名称<input id="segment-name" maxlength="40" value="${escapeHTML(segment.name||"第 "+(activeSegment+1)+" 段")}"></label>
       <div class="mobile-field-row">
+        <label class="mobile-field">起始时间（秒）<input id="segment-start" type="number" min="0" step="0.04" value="${(segment.startFrame/24).toFixed(2)}"></label>
         <label class="mobile-field">目标时长（秒）<input id="segment-duration" type="number" min="0.21" step="0.04" value="${duration.toFixed(2)}"></label>
-        <label class="mobile-field">所属分组<select id="segment-group">${groupOptions}</select></label>
       </div>
+      <label class="mobile-field">所属分组<select id="segment-group">${groupOptions}</select></label>
       <label class="mobile-switch"><input id="segment-enabled" type="checkbox" ${segment.enabled===false?"":"checked"}><span>启用此分段</span></label>
       <p class="mobile-hint">时长调整沿用电脑端相同的 H3 帧对齐与后续分段联动算法。</p>
     </section>
@@ -320,6 +321,11 @@ function renderSegmentsPanel() {
   });
   editorContent.querySelector("#segment-name").addEventListener("change",event=>{
     const value=event.target.value.trim();if(value)segment.name=value;scheduleSave();renderPanel();
+  });
+  editorContent.querySelector("#segment-start").addEventListener("change",event=>{
+    const requested=Math.max(0,Number(event.target.value)||0);
+    currentState.segmentConfig.segments=editWindow(segments(),activeSegment,"move",Math.round(requested*24));
+    syncActiveSelection();scheduleSave();renderPanel();
   });
   editorContent.querySelector("#segment-duration").addEventListener("change",event=>{
     const requested=Math.max(5/24,Number(event.target.value)||5);
