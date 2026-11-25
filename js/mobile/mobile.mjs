@@ -621,6 +621,12 @@ function renderGroupsPanel() {
 
 function renderSettingsPanel() {
   editorContent.innerHTML = `
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>二阶段采样</h3><span>导演台全局设置</span></div>
+      <label class="mobile-switch"><input id="second-pass-enabled" type="checkbox" ${currentState.secondPass===true?"checked":""}><span>启用二阶段采样</span></label>
+      <label class="mobile-field">放大模型名称<input id="second-pass-model" maxlength="160" value="${escapeHTML(currentState.secondPassModel||"")}" placeholder="填写电脑端可用的放大模型名称"></label>
+      <label class="mobile-field">高分辨率采样步数<input id="second-pass-steps" type="number" min="1" max="200" step="1" value="${Math.max(1,Math.floor(Number(currentState.secondPassHighSteps)||4))}"></label>
+      <p class="mobile-hint">模型名称需与电脑端已安装的放大模型一致。</p>
+    </section>
     <section class="mobile-card"><div class="mobile-card-heading"><h3>同步状态</h3><span>实时连接</span></div>
       <p class="mobile-settings-status">${conflict?"存在冲突，已暂停同步":dirty?"有待保存的修改":"连接正常"}</p>
       <p class="mobile-hint">当前版本：${revision}<br>节点标识：<code>${escapeHTML(nodeUuid||"未知")}</code></p>
@@ -630,6 +636,15 @@ function renderSettingsPanel() {
       <p class="mobile-hint">如果两端同时修改导致冲突，请先确认保留哪一端的数据，再重新配对。重新配对会撤销该节点旧的手机连接。</p>
       <button type="button" class="mobile-danger" id="disconnect-mobile">断开手机连接</button>
     </section>`;
+  editorContent.querySelector("#second-pass-enabled").addEventListener("change",event=>{
+    currentState.secondPass=event.target.checked;scheduleSave();
+  });
+  editorContent.querySelector("#second-pass-model").addEventListener("change",event=>{
+    currentState.secondPassModel=event.target.value.trim();scheduleSave();
+  });
+  editorContent.querySelector("#second-pass-steps").addEventListener("change",event=>{
+    currentState.secondPassHighSteps=Math.max(1,Math.min(200,Math.floor(Number(event.target.value)||1)));scheduleSave();
+  });
   editorContent.querySelector("#save-now").addEventListener("click",()=>{
     if(conflict){feedback("当前存在同步冲突，请重新配对。","error");return;}
     clearTimeout(saveTimer);saveState();
