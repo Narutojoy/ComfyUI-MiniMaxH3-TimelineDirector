@@ -391,7 +391,7 @@ function renderAssetsPanel() {
       ${audioCards||'<p class="mobile-empty">还没有音频素材。</p>'}
     </section>`;
   editorContent.querySelectorAll("[data-select-mobile-segment]").forEach(button=>button.addEventListener("click",()=>{
-    activeSegment=Number(button.dataset.selectMobileSegment);renderPanel();
+    activeSegment=Number(button.dataset.selectMobileSegment);syncActiveSelection();scheduleSave();renderPanel();
   }));
   editorContent.querySelector("#mobile-upload").addEventListener("change",async event=>{
     const category=editorContent.querySelector("#upload-category").value;
