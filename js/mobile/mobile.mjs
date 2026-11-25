@@ -108,6 +108,12 @@ async function saveState() {
     });
     const payload = await response.json();
     if (response.status === 409) {
+      if (JSON.stringify(payload.state) === pendingStateJson) {
+        revision = Number(payload.revision) || revision;
+        dirty = JSON.stringify(currentState) !== pendingStateJson;
+        setSyncStatus("服务器已保存相同内容 · 版本 " + revision);
+        return;
+      }
       conflict = true;
       dirty = false;
       setSyncStatus("同步冲突：已暂停自动保存，请重新配对并核对两端内容。");
