@@ -176,6 +176,7 @@ function connectEvents(token) {
     }
   });
   socket.addEventListener("close", event => {
+    if (event.target !== socket) return;
     if (event.code === 4002 || event.code === 4003) {
       clearTimeout(saveTimer);
       sessionStorage.removeItem("m3td-mobile-token");
