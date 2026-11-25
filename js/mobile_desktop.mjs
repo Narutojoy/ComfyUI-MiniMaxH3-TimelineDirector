@@ -124,7 +124,7 @@ export function attachMobilePairing(ui) {
     const result = originalSync(...args);
     if (!applyingRemote && token && !conflict) {
       clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(pushLocal, 180);
+      pendingTimer = setTimeout(() => { pendingTimer = 0; pushLocal(); }, 180);
     }
     return result;
   };
@@ -136,6 +136,8 @@ export function attachMobilePairing(ui) {
     setStatus("正在生成配对码…");
     token = "";
     conflict = false;
+    clearTimeout(pendingTimer);
+    pendingTimer = 0;
     if (socket) socket.close();
     try {
       const response = await fetch(API_ROOT + "/pair/create", {
@@ -158,7 +160,9 @@ export function attachMobilePairing(ui) {
         try { message = JSON.parse(event.data); } catch { return; }
         if (message.type === "ready") {
           revision = Number(message.revision) || revision;
-          setStatus("已连接手机端，正在同步。");
+          setStatus("电脑端同步通道已就绪，等待手机完成配对…");
+        } else if (message.type === "paired") {
+          setStatus("手机已完成配对，实时同步已建立。");
         } else if (message.type === "state") {
           if (pendingTimer) {
             conflict = true;
