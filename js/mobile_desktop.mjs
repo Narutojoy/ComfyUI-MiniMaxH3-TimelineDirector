@@ -231,6 +231,7 @@ export function attachMobilePairing(ui) {
         }
       });
       socket.addEventListener("close", event => {
+        if (event.target !== socket) return;
         if (event.code === 4002 || event.code === 4003) {
           token = "";
           clearTimeout(pendingTimer);
