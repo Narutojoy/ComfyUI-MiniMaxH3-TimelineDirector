@@ -183,6 +183,7 @@ async def mobile_pair_claim(request: web.Request) -> web.Response:
     # separately generated token so either endpoint can be revoked independently.
     mobile_token = secrets.token_urlsafe(32)
     session.mobile_token_hash = hashlib.sha256(mobile_token.encode("utf-8")).hexdigest()
+    await _broadcast(session, {"type": "paired", "node_uuid": session.node_uuid})
     return web.json_response({
         "token": mobile_token,
         "node_uuid": session.node_uuid,
