@@ -452,7 +452,10 @@ async function uploadAsset(file,kind,category) {
     const upload=await fetch("/upload/image",{method:"POST",body:data});
     const uploaded=await upload.json();
     if(!upload.ok)throw new Error(uploaded.error||("上传失败 HTTP "+upload.status));
-    const filename=[uploaded.subfolder,uploaded.name].filter(Boolean).join("/");
+    const uploadedName=String(uploaded?.name||"").replace(/[\\/]+/g,"_");
+    const uploadedFolder=String(uploaded?.subfolder||"").replace(/\\\\/g,"/").replace(/^\\/+|\\/+$/g,"");
+    if(!uploadedName)throw new Error("ComfyUI 未返回上传后的文件名");
+    const filename=uploadedFolder?uploadedFolder+"/"+uploadedName:uploadedName;
     const infoResponse=await fetch("/minimax_h3_timeline/media_info",{
       method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({filename,kind})
