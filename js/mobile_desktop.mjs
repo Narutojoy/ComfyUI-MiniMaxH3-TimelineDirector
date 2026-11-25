@@ -180,6 +180,7 @@ export function attachMobilePairing(ui) {
   button.addEventListener("click", async () => {
     dialog.style.display = "flex";
     urlInput.value = mobileUrl;
+    currentPairCode = "";
     codeBox.textContent = "--------";
     qrBox.replaceChildren();
     setStatus("正在生成配对码…");
