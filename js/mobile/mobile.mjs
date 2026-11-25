@@ -384,6 +384,25 @@ function renderAssetsPanel() {
     }
     renderPanel();
   });
+  editorContent.querySelector("#video-audio-enabled").addEventListener("change",event=>{
+    currentState.videoAudioEnabled=event.target.checked;scheduleSave();
+  });
+  editorContent.querySelectorAll("[data-video-start]").forEach(input=>input.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===input.dataset.videoStart);
+    if(clip){clip.start=Math.max(0,Number(input.value)||0);scheduleSave();}
+  }));
+  editorContent.querySelectorAll("[data-video-duration]").forEach(input=>input.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===input.dataset.videoDuration);
+    if(clip){clip.duration=Math.max(5/24,Number(input.value)||5);scheduleSave();}
+  }));
+  editorContent.querySelectorAll("[data-video-mode]").forEach(select=>select.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===select.dataset.videoMode);
+    if(clip){clip.referenceMode=select.value;scheduleSave();}
+  }));
+  editorContent.querySelectorAll("[data-delete-video]").forEach(button=>button.addEventListener("click",()=>{
+    currentState.videoClips=videos().filter(item=>String(item.id)!==button.dataset.deleteVideo);
+    scheduleSave();renderPanel();
+  }));
   editorContent.querySelectorAll("[data-image-category]").forEach(select=>select.addEventListener("change",()=>{
     const asset=images().find(item=>String(item.id)===select.dataset.imageCategory);if(asset)asset.group=select.value;scheduleSave();
   }));
