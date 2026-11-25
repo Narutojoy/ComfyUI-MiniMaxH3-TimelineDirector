@@ -771,9 +771,15 @@ function renderSettingsPanel() {
     if(conflict){feedback("当前存在同步冲突，请重新配对。","error");return;}
     clearTimeout(saveTimer);saveState();
   });
-  editorContent.querySelector("#disconnect-mobile").addEventListener("click",()=>{
-    clearTimeout(saveTimer);socket?.close();sessionStorage.removeItem("m3td-mobile-token");sessionStorage.removeItem("m3td-mobile-node");
-    sessionToken="";currentState=null;revision=0;setConnected(false);feedback("手机端已断开。","success");
+  editorContent.querySelector("#disconnect-mobile").addEventListener("click",async()=>{
+    const button=editorContent.querySelector("#disconnect-mobile");button.disabled=true;clearTimeout(saveTimer);
+    try {
+      const response=await fetch(API_ROOT+"/session/revoke",{method:"POST",headers:{Authorization:"Bearer "+sessionToken}});
+      const payload=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(payload.error||("HTTP "+response.status));
+      socket?.close();sessionStorage.removeItem("m3td-mobile-token");sessionStorage.removeItem("m3td-mobile-node");
+      sessionToken="";currentState=null;revision=0;setConnected(false);feedback("手机授权已从服务器撤销。","success");
+    } catch(error) {button.disabled=false;feedback("服务器撤销失败，凭据仍保留，请联网后重试："+error.message,"error");}
   });
 }
 
