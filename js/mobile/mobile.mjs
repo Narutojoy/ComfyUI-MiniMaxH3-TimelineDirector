@@ -132,4 +132,12 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape" && helpDialog && !helpDialog.hidden) closeHelp();
 });
 
-restoreSession();
+const pairingHash = new URLSearchParams(window.location.hash.slice(1));
+const scannedCode = pairingHash.get("pair");
+if (scannedCode && pairInput) {
+  pairInput.value = scannedCode.toUpperCase().replace(/[^A-Z2-9]/g, "").slice(0, 8);
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+  claimPairingCode();
+} else {
+  restoreSession();
+}
