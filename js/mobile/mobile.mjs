@@ -26,6 +26,7 @@ let activeSegment = 0;
 let selectedVideoId = "";
 let mobilePlayhead = 0;
 let videoDrag = null;
+const previewProxyRequests = new Set();
 let saveTimer = 0;
 let saveInFlight = false;
 let dirty = false;
@@ -359,6 +360,28 @@ function renderVideoTimeline() {
   return '<section class="mobile-card mobile-timeline-card"><div class="mobile-card-heading"><h3>视频时间轴</h3><span>拖动片段或两侧边缘调整</span></div>'+(list.length?'<div class="mobile-timeline-scroll"><div class="mobile-timeline-track" style="width:'+Math.max(100,end*scale)+'px"><div class="mobile-timeline-ruler">'+ruler+'</div>'+clips+'<i class="mobile-timeline-playhead" style="left:'+(mobilePlayhead*scale)+'px"></i></div></div><label class="mobile-field mobile-playhead-control">播放位置 · '+mobilePlayhead.toFixed(2)+' 秒<input id="video-playhead" type="range" min="0" max="'+end+'" step="0.0416667" value="'+mobilePlayhead+'"></label><div class="mobile-timeline-actions"><button type="button" class="mobile-secondary" id="split-video" '+(selected?"":"disabled")+'>在播放位置分割</button><button type="button" class="mobile-danger" id="delete-selected-video" '+(selected?"":"disabled")+'>删除选中片段</button></div>'+preview:'<p class="mobile-empty">上传参考视频后，这里会显示可拖动的视频时间轴。</p>')+'</section>';
 }
 
+async function loadMobilePreview(clip, video) {
+  if(!clip||!video)return;
+  if(clip.proxy){video.src=mediaURL(clip.proxy);return;}
+  if(previewProxyRequests.has(String(clip.id)))return;
+  previewProxyRequests.add(String(clip.id));
+  try{
+    const response=await fetch("/minimax_h3_timeline/preview_proxy",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({filename:clip.file})
+    });
+    const payload=await response.json();
+    if(!response.ok||payload.error)throw new Error(payload.error||("HTTP "+response.status));
+    clip.proxy=payload.proxy;
+    if(video.isConnected)video.src=mediaURL(clip.proxy);
+    scheduleSave();
+  }catch(error){
+    if(video.isConnected)video.insertAdjacentHTML("afterend",'<p class="mobile-hint">预览代理生成失败：'+escapeHTML(error.message)+'</p>');
+  }finally{
+    previewProxyRequests.delete(String(clip.id));
+  }
+}
+
 function renderAssetsPanel() {
   const segment=selectedSegment();
   const imageCategories=[["character","人物"],["props","道具"],["scene","环境"]];
@@ -417,6 +440,8 @@ function renderAssetsPanel() {
     }
     renderPanel();
   });
+  const previewClip=videos().find(item=>String(item.id)===String(selectedVideoId));
+  loadMobilePreview(previewClip,editorContent.querySelector(".mobile-video-preview video"));
   const playheadInput=editorContent.querySelector("#video-playhead");
   playheadInput?.addEventListener("input",event=>{
     mobilePlayhead=Number(event.target.value)||0;
