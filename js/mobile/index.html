@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111318">
+  <title>MiniMax H3 移动导演台</title>
+  <link rel="stylesheet" href="./mobile.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="返回 ComfyUI">
+        <span class="brand-mark">H3</span>
+        <span class="brand-copy"><strong>移动导演台</strong><small>MiniMax H3 Timeline Director</small></span>
+      </a>
+      <button class="mode-button" id="desktop-mode" type="button" title="返回 ComfyUI 桌面界面">桌面端</button>
+    </header>
+
+    <main class="main-content">
+      <section class="welcome-panel">
+        <div class="eyebrow"><span class="status-dot"></span> MOBILE WORKSPACE</div>
+        <h1>把导演台<br><span>装进口袋</span></h1>
+        <p class="intro">在手机上管理分组、分段、提示词和素材。连接电脑端的导演台后，即可继续编辑同一份工作流。</p>
+        <div class="connection-card">
+          <div class="connection-icon" aria-hidden="true">↔</div>
+          <div class="connection-copy">
+            <strong>尚未连接导演台</strong>
+            <span>请先在电脑端打开导演台并生成配对二维码。</span>
+          </div>
+          <span class="connection-state">未连接</span>
+        </div>
+        <div class="connect-actions">
+          <button class="primary-button" id="scan-help" type="button">如何连接</button>
+          <button class="secondary-button" id="refresh-page" type="button">刷新页面</button>
+        </div>
+      </section>
+
+      <section class="feature-section" aria-labelledby="feature-heading">
+        <div class="section-heading">
+          <div><span class="eyebrow">WORKSPACE</span><h2 id="feature-heading">移动工作区</h2></div>
+          <span class="section-note">连接后使用</span>
+        </div>
+        <div class="workspace-grid">
+          <button class="workspace-tile" type="button" data-panel="segments" disabled>
+            <span class="tile-icon">▤</span><strong>分段</strong><small>编辑镜头与提示词</small>
+          </button>
+          <button class="workspace-tile" type="button" data-panel="assets" disabled>
+            <span class="tile-icon">▧</span><strong>素材</strong><small>人物、道具、环境与音频</small>
+          </button>
+          <button class="workspace-tile" type="button" data-panel="groups" disabled>
+            <span class="tile-icon">▦</span><strong>分组</strong><small>整理幕与镜头顺序</small>
+          </button>
+          <button class="workspace-tile" type="button" data-panel="settings" disabled>
+            <span class="tile-icon">⚙</span><strong>设置</strong><small>连接与同步状态</small>
+          </button>
+        </div>
+      </section>
+
+      <section class="steps-section">
+        <div class="section-heading"><div><span class="eyebrow">GET STARTED</span><h2>首次连接</h2></div></div>
+        <ol class="steps-list">
+          <li><span>1</span><div><strong>在电脑端打开 ComfyUI</strong><p>载入包含 MiniMax H3 导演台节点的工作流。</p></div></li>
+          <li><span>2</span><div><strong>打开移动端配对</strong><p>电脑端生成一次性配对二维码。</p></div></li>
+          <li><span>3</span><div><strong>手机扫描二维码</strong><p>连接后即可编辑对应工作流中的导演台数据。</p></div></li>
+        </ol>
+      </section>
+      <p class="footer-note">本页面目前为移动端界面框架。配对、数据读取和同步功能将在后续阶段接入。</p>
+    </main>
+  </div>
+  <nav class="bottom-nav" aria-label="移动工作区导航">
+    <span class="nav-item active"><span>▤</span>分段</span>
+    <span class="nav-item"><span>▧</span>素材</span>
+    <span class="nav-item"><span>▦</span>分组</span>
+    <span class="nav-item"><span>⚙</span>设置</span>
+  </nav>
+  <div class="dialog-backdrop" id="connect-dialog" hidden>
+    <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+      <button class="dialog-close" id="close-dialog" type="button" aria-label="关闭">×</button>
+      <span class="eyebrow">PAIRING GUIDE</span>
+      <h2 id="dialog-title">连接电脑端导演台</h2>
+      <p>配对功能尚未接入。后续版本会在电脑端导演台增加二维码入口，手机扫描后即可安全连接。</p>
+      <button class="primary-button full-button" id="confirm-dialog" type="button">知道了</button>
+    </section>
+  </div>
+  <script type="module" src="./mobile.js"></script>
+</body>
+</html>
