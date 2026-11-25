@@ -675,7 +675,7 @@ function renderGroupsPanel() {
       <label class="mobile-field">分组名称<input data-group-name="${escapeHTML(group.id)}" maxlength="40" value="${escapeHTML(group.name)}"></label>
       <div class="mobile-group-members">${segments().map((segment,index)=>`
         <label><input type="checkbox" data-group-member="${index}" data-group-id="${escapeHTML(group.id)}" ${segment.groupId===group.id?"checked":""}>${escapeHTML(segmentLabel(segment,index))}</label>`).join("")}</div>
-      <button type="button" class="mobile-danger" data-dissolve-group="${escapeHTML(group.id)}">解散分组</button>
+      <div class="mobile-field-row"><button type="button" class="mobile-secondary" data-toggle-group="${escapeHTML(group.id)}">批量启用 / 禁用</button><button type="button" class="mobile-danger" data-dissolve-group="${escapeHTML(group.id)}">解散分组</button></div>
     </section>`;
   }).join("");
   editorContent.innerHTML = `
@@ -696,6 +696,14 @@ function renderGroupsPanel() {
     if(!segment)return;
     if(input.checked)segment.groupId=groupId;else if(segment.groupId===groupId)delete segment.groupId;
     scheduleSave();
+  }));
+  editorContent.querySelectorAll("[data-toggle-group]").forEach(button=>button.addEventListener("click",()=>{
+    const id=button.dataset.toggleGroup;
+    const members=segments().filter(segment=>String(segment.groupId)===id);
+    if(!members.length)return;
+    const enable=members.every(segment=>segment.enabled===false);
+    for(const segment of members)segment.enabled=enable;
+    scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-dissolve-group]").forEach(button=>button.addEventListener("click",()=>{
     const id=button.dataset.dissolveGroup;
