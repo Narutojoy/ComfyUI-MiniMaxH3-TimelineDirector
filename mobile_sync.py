@@ -110,9 +110,10 @@ async def _get_session(request: web.Request) -> MobileSession:
             if secrets.compare_digest(item.token_hash, digest)
             or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))
         ), None)
+        if session is not None:
+            session.expires_at = time.time() + SESSION_TTL_SECONDS
     if session is None:
         raise web.HTTPUnauthorized(text="Pairing expired or invalid")
-    session.expires_at = time.time() + SESSION_TTL_SECONDS
     return session
 
 
