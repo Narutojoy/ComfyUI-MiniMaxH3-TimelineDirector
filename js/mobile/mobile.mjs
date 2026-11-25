@@ -431,7 +431,7 @@ function renderAssetsPanel() {
     </section>
     ${renderVideoTimeline()}
     <section class="mobile-card"><div class="mobile-card-heading"><h3>参考视频（${videos().length}）</h3><label class="mobile-switch"><input id="video-audio-enabled" type="checkbox" ${currentState.videoAudioEnabled===false?"":"checked"}><span>保留视频音轨</span></label></div>
-      ${videos().map((clip,index)=>`<article class="mobile-asset-card video-card"><video src="${escapeHTML(mediaURL(clip.file))}" muted playsinline preload="metadata"></video><div class="mobile-asset-info"><strong>${escapeHTML(clip.name||"参考视频 "+(index+1))}</strong><small>${Number(clip.duration||0).toFixed(2)} 秒 · ${clip.hasAudio?"含音轨":"无音轨"}</small><label>开始位置<input type="number" step="0.04" min="0" data-video-start="${escapeHTML(clip.id)}" value="${Number(clip.start||0).toFixed(2)}"></label><label>使用时长<input type="number" step="0.04" min="0.21" data-video-duration="${escapeHTML(clip.id)}" value="${Number(clip.duration||0).toFixed(2)}"></label><select data-video-mode="${escapeHTML(clip.id)}"><option value="guide" ${clip.referenceMode==="guide"?"selected":""}>完整参考</option><option value="edit" ${clip.referenceMode==="edit"?"selected":""}>普通参考视频</option><option value="boundary" ${clip.referenceMode==="boundary"?"selected":""}>边界参考</option></select></div><button type="button" class="mobile-icon-button" data-delete-video="${escapeHTML(clip.id)}" aria-label="删除视频">×</button></article>`).join("")||'<p class="mobile-empty">还没有参考视频。</p>'}
+      ${videos().map((clip,index)=>`<article class="mobile-asset-card video-card"><video src="${escapeHTML(mediaURL(clip.file))}" muted playsinline preload="metadata"></video><div class="mobile-asset-info"><strong>${escapeHTML(clip.name||"参考视频 "+(index+1))}</strong><small>${Number(clip.duration||0).toFixed(2)} 秒 · ${clip.hasAudio?"含音轨":"无音轨"}</small><label>开始位置<input type="number" step="0.04" min="0" data-video-start="${escapeHTML(clip.id)}" value="${Number(clip.start||0).toFixed(2)}"></label><label>使用时长<input type="number" step="0.04" min="0.21" data-video-duration="${escapeHTML(clip.id)}" value="${Number(clip.duration||0).toFixed(2)}"></label><label>源视频裁切起点<input type="number" step="0.04" min="0" data-video-trim-start="${escapeHTML(clip.id)}" value="${Number(clip.trimStart||0).toFixed(2)}"></label><div class="mobile-field-row"><label>参考宽度<input type="number" step="32" min="32" max="16384" data-video-width="${escapeHTML(clip.id)}" value="${Number(clip.referenceWidth||832)}"></label><label>参考高度<input type="number" step="32" min="32" max="16384" data-video-height="${escapeHTML(clip.id)}" value="${Number(clip.referenceHeight||480)}"></label></div><select data-video-mode="${escapeHTML(clip.id)}"><option value="guide" ${clip.referenceMode==="guide"?"selected":""}>完整参考</option><option value="edit" ${clip.referenceMode==="edit"?"selected":""}>普通参考视频</option><option value="boundary" ${clip.referenceMode==="boundary"?"selected":""}>边界参考</option></select></div><button type="button" class="mobile-icon-button" data-delete-video="${escapeHTML(clip.id)}" aria-label="删除视频">×</button></article>`).join("")||'<p class="mobile-empty">还没有参考视频。</p>'}
     </section>
     <section class="mobile-card"><div class="mobile-card-heading"><h3>图片素材（${images().length}）</h3><label class="mobile-switch"><input id="global-apply-images" type="checkbox"><span>应用到所有分段</span></label></div>
       ${imageCards||'<p class="mobile-empty">还没有图片素材。</p>'}
@@ -552,6 +552,18 @@ function renderAssetsPanel() {
   editorContent.querySelectorAll("[data-video-duration]").forEach(input=>input.addEventListener("change",()=>{
     const clip=videos().find(item=>String(item.id)===input.dataset.videoDuration);
     if(clip){clip.duration=Math.max(5/24,Number(input.value)||5);scheduleSave();}
+  }));
+  editorContent.querySelectorAll("[data-video-trim-start]").forEach(input=>input.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===input.dataset.videoTrimStart);
+    if(clip){const max=Math.max(0,Number(clip.sourceDuration||clip.duration)-5/24);clip.trimStart=Math.max(0,Math.min(max,Number(input.value)||0));clip.duration=Math.min(clip.duration,Math.max(5/24,Number(clip.sourceDuration||clip.duration)-clip.trimStart));scheduleSave();renderPanel();}
+  }));
+  editorContent.querySelectorAll("[data-video-width]").forEach(input=>input.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===input.dataset.videoWidth);
+    if(clip){clip.referenceWidth=Math.max(32,Math.min(16384,Math.round((Number(input.value)||832)/32)*32));scheduleSave();renderPanel();}
+  }));
+  editorContent.querySelectorAll("[data-video-height]").forEach(input=>input.addEventListener("change",()=>{
+    const clip=videos().find(item=>String(item.id)===input.dataset.videoHeight);
+    if(clip){clip.referenceHeight=Math.max(32,Math.min(16384,Math.round((Number(input.value)||480)/32)*32));scheduleSave();renderPanel();}
   }));
   editorContent.querySelectorAll("[data-video-mode]").forEach(select=>select.addEventListener("change",()=>{
     const clip=videos().find(item=>String(item.id)===select.dataset.videoMode);
