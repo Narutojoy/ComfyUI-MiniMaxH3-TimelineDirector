@@ -82,6 +82,17 @@ async def _read_json(request: web.Request) -> dict[str, Any]:
     return value
 
 
+_socket_close_tasks: set[asyncio.Task[Any]] = set()
+
+
+async def _close_expired_socket(socket: web.WebSocketResponse) -> None:
+    try:
+        if not socket.closed:
+            await socket.close(code=4002, message=b"Pairing expired")
+    except Exception:
+        pass
+
+
 def _purge_expired() -> None:
     now = time.time()
     for code, (_session_id, expires) in list(_pair_codes.items()):
@@ -90,6 +101,11 @@ def _purge_expired() -> None:
     for session_id, session in list(_sessions.items()):
         if session.expires_at <= now:
             _sessions.pop(session_id, None)
+            for socket in tuple(session.sockets):
+                task = asyncio.create_task(_close_expired_socket(socket))
+                _socket_close_tasks.add(task)
+                task.add_done_callback(_socket_close_tasks.discard)
+            session.sockets.clear()
 
 
 def _token_from_request(request: web.Request) -> str:
