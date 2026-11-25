@@ -483,6 +483,7 @@ function renderVideoTimeline() {
 
 async function loadMobilePreview(clip, video) {
   if(!clip||!video)return;
+  const requestGeneration=sessionGeneration;
   if(clip.proxy){video.src=mediaURL(clip.proxy);return;}
   if(previewProxyRequests.has(String(clip.id)))return;
   previewProxyRequests.add(String(clip.id));
@@ -492,12 +493,13 @@ async function loadMobilePreview(clip, video) {
       body:JSON.stringify({filename:clip.file})
     });
     const payload=await response.json();
+    if(requestGeneration!==sessionGeneration)return;
     if(!response.ok||payload.error)throw new Error(payload.error||("HTTP "+response.status));
     clip.proxy=payload.proxy;
     if(video.isConnected)video.src=mediaURL(clip.proxy);
     scheduleSave();
   }catch(error){
-    if(video.isConnected)video.insertAdjacentHTML("afterend",'<p class="mobile-hint">预览代理生成失败：'+escapeHTML(error.message)+'</p>');
+    if(requestGeneration===sessionGeneration&&video.isConnected)video.insertAdjacentHTML("afterend",'<p class="mobile-hint">预览代理生成失败：'+escapeHTML(error.message)+'</p>');
   }finally{
     previewProxyRequests.delete(String(clip.id));
   }
@@ -766,6 +768,8 @@ function renderAssetsPanel() {
 
 async function uploadAsset(file,kind,category) {
   if(!file || !sessionToken)return;
+  const requestGeneration=sessionGeneration;
+  const requestToken=sessionToken;
   if(file.size<=0 || file.size>MAX_UPLOAD_BYTES){feedback(file.size>MAX_UPLOAD_BYTES?"文件超过 512 MB 限制。":"文件为空。","error");return;}
   const serverName=Date.now()+"_"+Math.random().toString(36).slice(2,7)+"_"+file.name.replace(/[^\w.()\-\u4e00-\u9fff]+/gu,"_");
   const data=new FormData();
@@ -774,6 +778,7 @@ async function uploadAsset(file,kind,category) {
   try{
     const upload=await fetch("/upload/image",{method:"POST",body:data});
     const uploaded=await upload.json();
+    if(requestGeneration!==sessionGeneration||requestToken!==sessionToken)return;
     if(!upload.ok)throw new Error(uploaded.error||("上传失败 HTTP "+upload.status));
     const uploadedName=String(uploaded?.name||"").replace(/[\\/]+/g,"_");
     const uploadedFolder=String(uploaded?.subfolder||"").replace(/\\/g,"/").replace(/^\/+|\/+$/g,"");
@@ -784,6 +789,7 @@ async function uploadAsset(file,kind,category) {
       body:JSON.stringify({filename,kind})
     });
     const info=await infoResponse.json();
+    if(requestGeneration!==sessionGeneration||requestToken!==sessionToken)return;
     if(!infoResponse.ok||info.error)throw new Error(info.error||"媒体检查失败");
     if(kind==="image"){
       currentState.images.push({id:uid(),file:info.filename,name:file.name,width:info.width||0,height:info.height||0,group:category});
@@ -800,7 +806,7 @@ async function uploadAsset(file,kind,category) {
       if(first && first.audios.length<3)first.audios.push(currentState.audios.at(-1).id);
     }
     scheduleSave();setSyncStatus("上传完成，等待同步…");
-  }catch(error){feedback("上传失败："+error.message,"error");setSyncStatus("上传失败");}
+  }catch(error){if(requestGeneration===sessionGeneration&&requestToken===sessionToken){feedback("上传失败："+error.message,"error");setSyncStatus("上传失败");}}
 }
 
 function renderGroupsPanel() {
