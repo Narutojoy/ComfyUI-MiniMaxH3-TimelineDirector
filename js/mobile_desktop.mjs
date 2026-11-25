@@ -1,3 +1,5 @@
+import qrcode from "./mobile/qrcode.mjs";
+
 const API_ROOT = "/minimax_h3_timeline/mobile";
 
 function makeUuid() {
@@ -39,7 +41,8 @@ function ensureDialog() {
       <p style="color:#aab6c8;margin:0 0 16px">在手机浏览器打开下方页面，输入一次性配对码。配对码 3 分钟内有效且只能使用一次。</p>
       <label style="display:block;color:#aab6c8;font-size:12px;margin-bottom:5px">手机页面地址</label>
       <input data-url readonly style="box-sizing:border-box;width:100%;padding:10px;border-radius:8px;border:1px solid #475569;background:#0d1320;color:#dbeafe">
-      <label style="display:block;color:#aab6c8;font-size:12px;margin:14px 0 5px">一次性配对码</label>
+      <div data-qr style="display:flex;justify-content:center;padding:14px 0 4px"></div>
+      <label style="display:block;color:#aab6c8;font-size:12px;margin:8px 0 5px">也可手动输入配对码</label>
       <div data-code style="font-size:30px;letter-spacing:.18em;font-weight:800;text-align:center;padding:12px;background:#0d1320;border:1px dashed #64748b;border-radius:10px;color:#f8fafc">--------</div>
       <p data-status style="min-height:22px;color:#93c5fd;margin:12px 0 0">正在等待手机连接…</p>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
@@ -77,6 +80,7 @@ export function attachMobilePairing(ui) {
   const status = dialog.querySelector("[data-status]");
   const urlInput = dialog.querySelector("[data-url]");
   const codeBox = dialog.querySelector("[data-code]");
+  const qrBox = dialog.querySelector("[data-qr]");
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
   let token = "";
   let revision = 0;
@@ -133,6 +137,7 @@ export function attachMobilePairing(ui) {
     dialog.style.display = "flex";
     urlInput.value = mobileUrl;
     codeBox.textContent = "--------";
+    qrBox.replaceChildren();
     setStatus("正在生成配对码…");
     token = "";
     conflict = false;
@@ -150,7 +155,18 @@ export function attachMobilePairing(ui) {
       token = payload.token;
       revision = payload.revision;
       codeBox.textContent = payload.code;
-      setStatus("等待手机输入配对码…（3 分钟有效）");
+      const pairingUrl = mobileUrl + "#pair=" + encodeURIComponent(payload.code);
+      const qr = qrcode(0, "M");
+      qr.addData(pairingUrl);
+      qr.make();
+      const qrImage = document.createElement("img");
+      qrImage.alt = "手机移动导演台配对二维码";
+      qrImage.width = 196;
+      qrImage.height = 196;
+      qrImage.style.cssText = "display:block;width:196px;height:196px;background:#fff;padding:8px;border-radius:10px";
+      qrImage.src = qr.createDataURL(4, 4);
+      qrBox.replaceChildren(qrImage);
+      setStatus("请用手机扫描二维码，或手动打开页面输入配对码。（3 分钟有效）");
       const wsUrl = new URL(API_ROOT + "/events", window.location.href);
       wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(wsUrl);
