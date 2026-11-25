@@ -351,7 +351,7 @@ function renderVideoTimeline() {
   const end=Math.max(12,...list.map(clip=>Number(clip.start||0)+Number(clip.duration||0)+1));
   const scale=44;
   const selected=list.find(clip=>String(clip.id)===String(selectedVideoId))||list[0]||null;
-  if(selected&&!selectedVideoId)selectedVideoId=selected.id;
+  selectedVideoId=selected?.id||"";
   mobilePlayhead=Math.max(0,Math.min(mobilePlayhead,end));
   const ruler=Array.from({length:Math.ceil(end/5)+1},(_,i)=>i*5).filter(t=>t<=end).map(t=>'<span style="left:'+(t*scale)+'px">'+t.toFixed(0)+'s</span>').join("");
   const clips=list.map((clip,index)=>'<div class="mobile-timeline-clip '+(String(clip.id)===String(selectedVideoId)?"selected":"")+'" data-video-clip="'+escapeHTML(clip.id)+'" style="left:'+(Number(clip.start||0)*scale)+'px;width:'+Math.max(28,Number(clip.duration||0)*scale)+'px"><button type="button" class="mobile-timeline-handle left" data-video-edge="left" aria-label="调整片段起点"></button><strong>'+escapeHTML(clip.name||"视频 "+(index+1))+'</strong><small>'+Number(clip.duration||0).toFixed(2)+'s</small><button type="button" class="mobile-timeline-handle right" data-video-edge="right" aria-label="调整片段终点"></button></div>').join("");
