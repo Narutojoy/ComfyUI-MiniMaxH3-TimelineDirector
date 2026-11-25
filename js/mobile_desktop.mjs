@@ -40,12 +40,14 @@ function ensureDialog() {
       <h2 style="margin:8px 0 6px;font-size:22px">手机配对</h2>
       <p style="color:#aab6c8;margin:0 0 16px">用手机扫描二维码即可自动配对，也可打开下方页面手动输入配对码。配对码 3 分钟内有效且只能使用一次。</p>
       <label style="display:block;color:#aab6c8;font-size:12px;margin-bottom:5px">手机页面地址</label>
-      <input data-url readonly style="box-sizing:border-box;width:100%;padding:10px;border-radius:8px;border:1px solid #475569;background:#0d1320;color:#dbeafe">
+      <input data-url inputmode="url" autocomplete="url" spellcheck="false" style="box-sizing:border-box;width:100%;padding:10px;border-radius:8px;border:1px solid #475569;background:#0d1320;color:#dbeafe">
       <div data-qr style="display:flex;justify-content:center;padding:14px 0 4px"></div>
       <label style="display:block;color:#aab6c8;font-size:12px;margin:8px 0 5px">也可手动输入配对码</label>
       <div data-code style="font-size:30px;letter-spacing:.18em;font-weight:800;text-align:center;padding:12px;background:#0d1320;border:1px dashed #64748b;border-radius:10px;color:#f8fafc">--------</div>
       <p data-status style="min-height:22px;color:#93c5fd;margin:12px 0 0">正在等待手机连接…</p>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+      <p style="color:#fbbf24;font-size:12px;margin:8px 0 0">如果地址是 localhost 或 127.0.0.1，手机无法通过它访问电脑。请把地址中的主机名改成电脑的局域网 IP，外出时则使用手机可访问的 WireGuard 地址或域名，然后点“更新二维码”。</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:18px">
+        <button type="button" data-refresh-qr style="padding:9px 14px;border:1px solid #64748b;border-radius:8px;background:#273449;color:#fff">更新二维码</button>
         <button type="button" data-copy style="padding:9px 14px;border:1px solid #64748b;border-radius:8px;background:#273449;color:#fff">复制页面地址</button>
         <button type="button" data-close style="padding:9px 14px;border:0;border-radius:8px;background:#2563eb;color:#fff">关闭</button>
       </div>
