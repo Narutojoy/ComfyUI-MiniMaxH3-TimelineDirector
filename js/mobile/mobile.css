@@ -145,3 +145,9 @@ body.is-connected .connect-actions{display:none}
 .mobile-settings-status{font-size:14px;color:#86efac}
 .mobile-settings-status code,.mobile-card code{overflow-wrap:anywhere;color:#c4b5fd}
 @media(max-width:420px){.mobile-field-row{grid-template-columns:1fr}.mobile-asset-card{gap:7px;padding:7px}.mobile-asset-card>img{width:48px;height:48px;flex-basis:48px}.mobile-assign{font-size:8px}}
+
+
+.mobile-asset-card>video{width:58px;height:58px;flex:0 0 58px;object-fit:cover;border-radius:8px;background:#080b10}
+.video-card .mobile-asset-info label{display:grid;gap:3px;color:var(--muted);font-size:9px}
+.video-card .mobile-asset-info input{width:100%;min-width:0;min-height:30px;padding:4px 7px;border:1px solid var(--line);border-radius:7px;background:#0c1119;color:var(--text);font-size:11px}
+@media(max-width:420px){.mobile-asset-card>video{width:48px;height:48px;flex-basis:48px}}
