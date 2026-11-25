@@ -202,13 +202,13 @@ async def mobile_pair_claim(request: web.Request) -> web.Response:
         _purge_expired()
         entry = _pair_codes.pop(code, None)
         session = _sessions.get(entry[0]) if entry else None
+        if session is not None:
+            # Bind the mobile credential while still holding the session lock,
+            # so a simultaneous re-pair cannot issue a token for a revoked session.
+            mobile_token = secrets.token_urlsafe(32)
+            session.mobile_token_hash = hashlib.sha256(mobile_token.encode("utf-8")).hexdigest()
     if session is None:
         return web.json_response({"error": "Invalid or expired pairing code"}, status=404)
-
-    # The session token is issued once to the desktop. The phone receives a
-    # separately generated token so either endpoint can be revoked independently.
-    mobile_token = secrets.token_urlsafe(32)
-    session.mobile_token_hash = hashlib.sha256(mobile_token.encode("utf-8")).hexdigest()
     await _broadcast(session, {"type": "paired", "node_uuid": session.node_uuid})
     return web.json_response({
         "token": mobile_token,
@@ -248,6 +248,8 @@ async def mobile_state_put(request: web.Request) -> web.Response:
         return web.json_response({"error": str(exc)}, status=400)
 
     async with _lock:
+        if not any(item is session for item in _sessions.values()):
+            raise web.HTTPUnauthorized(text="Pairing was replaced or revoked")
         if expected != session.revision:
             return web.json_response({
                 "error": "revision_conflict",
