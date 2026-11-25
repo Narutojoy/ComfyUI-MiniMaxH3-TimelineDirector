@@ -441,7 +441,23 @@ function renderAssetsPanel() {
     renderPanel();
   });
   const previewClip=videos().find(item=>String(item.id)===String(selectedVideoId));
-  loadMobilePreview(previewClip,editorContent.querySelector(".mobile-video-preview video"));
+  const previewElement=editorContent.querySelector(".mobile-video-preview video");
+  loadMobilePreview(previewClip,previewElement);
+  if(previewClip&&previewElement){
+    previewElement.addEventListener("loadedmetadata",()=>{
+      const offset=Math.max(0,Math.min(Number(previewClip.duration||0),mobilePlayhead-Number(previewClip.start||0)));
+      try{previewElement.currentTime=Math.min(previewElement.duration-.01,Number(previewClip.trimStart||0)+offset);}catch{}
+    });
+    previewElement.addEventListener("timeupdate",()=>{
+      mobilePlayhead=Number(previewClip.start||0)+previewElement.currentTime-Number(previewClip.trimStart||0);
+      const slider=editorContent.querySelector("#video-playhead");
+      if(slider)slider.value=String(mobilePlayhead);
+      const marker=editorContent.querySelector(".mobile-timeline-playhead");
+      if(marker)marker.style.left=(mobilePlayhead*44)+"px";
+      const label=editorContent.querySelector(".mobile-playhead-control");
+      if(label)label.firstChild.textContent="播放位置 · "+mobilePlayhead.toFixed(2)+" 秒";
+    });
+  }
   const playheadInput=editorContent.querySelector("#video-playhead");
   playheadInput?.addEventListener("input",event=>{
     mobilePlayhead=Number(event.target.value)||0;
@@ -449,6 +465,11 @@ function renderAssetsPanel() {
     if(marker)marker.style.left=(mobilePlayhead*44)+"px";
     const label=editorContent.querySelector(".mobile-playhead-control");
     if(label)label.firstChild.textContent="播放位置 · "+mobilePlayhead.toFixed(2)+" 秒";
+    const clip=videos().find(item=>String(item.id)===String(selectedVideoId));
+    const video=editorContent.querySelector(".mobile-video-preview video");
+    if(clip&&video&&video.readyState>=1&&mobilePlayhead>=clip.start&&mobilePlayhead<=clip.start+clip.duration){
+      try{video.currentTime=Math.min(video.duration-.01,Number(clip.trimStart||0)+mobilePlayhead-clip.start);}catch{}
+    }
   });
   editorContent.querySelectorAll("[data-video-clip]").forEach(element=>element.addEventListener("pointerdown",event=>{
     const clip=videos().find(item=>String(item.id)===element.dataset.videoClip);
