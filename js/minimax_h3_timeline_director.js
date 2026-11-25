@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { createWindows, editWindow, minimumAlignedLength, nearestOverlap, applyGlobalOverlapFrames, setWindowContributionDuration } from "./segment_windows.mjs";
+import { attachMobilePairing } from "./mobile_desktop.mjs";
 
 const TIMELINE_NODE_NAMES = new Set(["MiniMaxH3TimelinePlanner", "MiniMaxH3TimelineDirector"]);
 const STYLE_ID = "m3td-style";
@@ -2432,6 +2433,7 @@ app.registerExtension({
       directorWidget.computeSize=width=>[Math.max(100,(this.size?.[0]||width||860)-20),directorWidget.__m3tdHeight||DIRECTOR_HEIGHT];
       const brand=tr(nodeData.name==="MiniMaxH3TimelinePlanner"?"brandPlanner":"brandDirector");
       this.__m3td=new TimelineDirectorUI(this,root,timelineWidget,brand,nodeData.name==="MiniMaxH3TimelinePlanner");
+      attachMobilePairing(this.__m3td);
       this.__m3td.directorWidget=directorWidget;
       this.__m3tdFocusedTextWheel=e=>{
         let input=e.target?.closest?.("textarea");
