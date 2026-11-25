@@ -272,6 +272,12 @@ function scheduleMobileReconnect(token) {
 
 async function claimPairingCode() {
   if (pairButton?.disabled) return;
+  const code = String(pairInput?.value || "").trim().toUpperCase();
+  if (!/^[A-Z2-9]{8}$/.test(code)) {
+    feedback("请输入电脑端显示的 8 位配对码。", "error");
+    return;
+  }
+  pairButton.disabled = true;
   const requestGeneration = ++sessionGeneration;
   clearTimeout(saveTimer);
   clearTimeout(reconnectTimer);
@@ -287,12 +293,7 @@ async function claimPairingCode() {
   pendingStateJson = "";
   dirty = false;
   conflict = false;
-  const code = String(pairInput?.value || "").trim().toUpperCase();
-  if (!/^[A-Z2-9]{8}$/.test(code)) {
-    feedback("请输入电脑端显示的 8 位配对码。", "error");
-    return;
-  }
-  pairButton.disabled = true;
+  setConnected(false);
   feedback("正在验证配对码…");
   try {
     const response = await fetch(API_ROOT + "/pair/claim", {
