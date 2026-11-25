@@ -6,7 +6,10 @@ from .minimax_h3_timeline_director import (
     MiniMaxH3OmniPromptBridge,
     MiniMaxH3TimelinePlanner,
 )
-# Register the isolated mobile relay routes without changing node schemas.\nfrom . import mobile_sync as _mobile_sync\n\nfrom .minimax_h3_finite_segments import (
+# Register the isolated mobile relay routes without changing node schemas.
+from . import mobile_sync as _mobile_sync
+
+from .minimax_h3_finite_segments import (
     MiniMaxH3FiniteLatentContinuation,
     MiniMaxH3FiniteAudioTrimTail,
     MiniMaxH3FiniteLoopAccumulate,
