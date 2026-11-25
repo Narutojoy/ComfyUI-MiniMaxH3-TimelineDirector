@@ -88,6 +88,7 @@ export function attachMobilePairing(ui) {
   let applyingRemote = false;
   let pendingTimer = 0;
   let pushInFlight = false;
+  let localQueued = false;
   let pendingStateJson = "";
   let conflict = false;
 
@@ -131,6 +132,10 @@ export function attachMobilePairing(ui) {
     } finally {
       pushInFlight = false;
       pendingStateJson = "";
+      if (localQueued && !conflict) {
+        localQueued = false;
+        queueMicrotask(pushLocal);
+      }
     }
   };
 
@@ -138,6 +143,7 @@ export function attachMobilePairing(ui) {
   ui.sync = (...args) => {
     const result = originalSync(...args);
     if (!applyingRemote && token && !conflict) {
+      if (pushInFlight) localQueued = true;
       clearTimeout(pendingTimer);
       pendingTimer = setTimeout(() => { pendingTimer = 0; pushLocal(); }, 180);
     }
@@ -191,6 +197,7 @@ export function attachMobilePairing(ui) {
         } else if (message.type === "paired") {
           setStatus("手机已完成配对，实时同步已建立。");
         } else if (message.type === "state") {
+          if (Number(message.revision) <= revision) return;
           if (pushInFlight && JSON.stringify(message.state) === pendingStateJson) {
             revision = Number(message.revision) || revision;
             setStatus("电脑端修改已同步。");
