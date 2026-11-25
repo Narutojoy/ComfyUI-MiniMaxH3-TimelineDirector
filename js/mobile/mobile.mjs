@@ -437,6 +437,9 @@ function renderAssetsPanel() {
   }));
   const finishVideoDrag=()=>{
     if(!videoDrag)return;
+    window.removeEventListener("pointermove",moveVideoDrag);
+    window.removeEventListener("pointerup",finishVideoDrag);
+    window.removeEventListener("pointercancel",finishVideoDrag);
     videoDrag=null;scheduleSave();renderPanel();
   };
   const moveVideoDrag=event=>{
