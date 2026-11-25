@@ -407,7 +407,13 @@ function renderSegmentsPanel() {
     </section>
     <section class="mobile-card">
       <div class="mobile-card-heading"><h3>本段素材引用</h3><span>图片最多 9 个 · 音频最多 3 个</span></div>
-      <p class="mobile-hint">图片：${segment.images.length} 个　音频：${segment.audios.length} 个</p>
+      <p class="mobile-hint">图片：${segment.images.length} 个　音频：${segment.audios.length} 个。可在此调整本段内的引用顺序。</p>
+      <div class="mobile-assigned-list"><strong>图片顺序</strong>
+        ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row"><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
+      </div>
+      <div class="mobile-assigned-list"><strong>音频顺序</strong>
+        ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row"><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
+      </div>
       <button type="button" class="mobile-secondary full-width" data-open-assets>管理本段素材</button>
     </section>
     <section class="mobile-card">
@@ -467,9 +473,16 @@ function renderSegmentsPanel() {
   editorContent.querySelector("#global-prompt").addEventListener("input",event=>{
     currentState.globalPrompt=event.target.value;scheduleSave();
   });
-  editorContent.querySelector("[data-open-assets]").addEventListener("click",()=>{
+  editorContent.querySelectorAll("[data-open-assets]").forEach(button=>button.addEventListener("click",()=>{
     activePanel="assets";renderPanel();
-  });
+  }));
+  editorContent.querySelectorAll("[data-reorder-segment-asset]").forEach(button=>button.addEventListener("click",()=>{
+    const kind=button.dataset.reorderSegmentAsset,index=Number(button.dataset.index),list=segment[kind];
+    const target=index+(button.dataset.direction==="up"?-1:1);
+    if(!Array.isArray(list)||target<0||target>=list.length)return;
+    [list[index],list[target]]=[list[target],list[index]];
+    scheduleSave();renderPanel();
+  }));
 }
 
 function renderVideoTimeline() {
