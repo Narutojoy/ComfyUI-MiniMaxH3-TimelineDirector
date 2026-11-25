@@ -263,6 +263,36 @@ async def mobile_state_put(request: web.Request) -> web.Response:
     return web.json_response({"ok": True, "revision": revision})
 
 
+@PromptServer.instance.routes.post("/minimax_h3_timeline/mobile/session/revoke")
+async def mobile_session_revoke(request: web.Request) -> web.Response:
+    """Revoke the calling mobile credential and its paired session."""
+    if not _same_origin(request):
+        raise web.HTTPForbidden(text="Revocation must use the same ComfyUI origin")
+    token = _token_from_request(request)
+    digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
+    sockets: list[web.WebSocketResponse] = []
+    async with _lock:
+        _purge_expired()
+        match = next(((sid, item) for sid, item in _sessions.items()
+                      if item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest)), None)
+        if match is None:
+            raise web.HTTPUnauthorized(text="Mobile pairing is already revoked or expired")
+        session_id, session = match
+        _sessions.pop(session_id, None)
+        sockets.extend(session.sockets)
+        session.sockets.clear()
+        for code, (bound_id, _expires) in list(_pair_codes.items()):
+            if bound_id == session_id:
+                _pair_codes.pop(code, None)
+    for socket in sockets:
+        if not socket.closed:
+            try:
+                await socket.close(code=4002, message=b"Mobile pairing revoked")
+            except Exception:
+                pass
+    return web.json_response({"ok": True, "revoked": True})
+
+
 @PromptServer.instance.routes.get("/minimax_h3_timeline/mobile/events")
 async def mobile_events(request: web.Request) -> web.StreamResponse:
     if not _same_origin(request):
