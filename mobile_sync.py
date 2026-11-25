@@ -101,7 +101,11 @@ async def _get_session(request: web.Request) -> MobileSession:
     digest = hashlib.sha256(token.encode("utf-8")).hexdigest()
     async with _lock:
         _purge_expired()
-        session = next((\n            item for item in _sessions.values()\n            if secrets.compare_digest(item.token_hash, digest)\n            or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))\n        ), None)
+        session = next((
+            item for item in _sessions.values()
+            if secrets.compare_digest(item.token_hash, digest)
+            or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))
+        ), None)
     if session is None:
         raise web.HTTPUnauthorized(text="Pairing expired or invalid")
     session.expires_at = time.time() + SESSION_TTL_SECONDS
