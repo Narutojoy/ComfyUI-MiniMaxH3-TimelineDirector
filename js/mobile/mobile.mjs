@@ -175,11 +175,23 @@ function connectEvents(token) {
       feedback("配对成功，正在建立实时同步。", "success");
     }
   });
-  socket.addEventListener("close", () => {
-    if (sessionToken) {
+  socket.addEventListener("close", event => {
+    if (event.code === 4002 || event.code === 4003) {
+      clearTimeout(saveTimer);
+      sessionStorage.removeItem("m3td-mobile-token");
+      sessionStorage.removeItem("m3td-mobile-node");
+      sessionToken = "";
+      currentState = null;
+      revision = 0;
+      dirty = false;
+      conflict = false;
+      setConnected(false);
+      setSyncStatus("手机授权已撤销或配对已被替换");
+      feedback("当前手机授权已失效，请重新扫描电脑端二维码。", "error");
+    } else if (sessionToken) {
       setConnected(false);
       setSyncStatus("连接已断开");
-      feedback("连接已断开。请检查网络，或重新配对。", "error");
+      feedback("连接已断开。请检查网络；网络恢复后可刷新页面重新连接。", "error");
     }
   });
   socket.addEventListener("error", () => feedback("实时连接失败，请确认手机和电脑能访问同一个 ComfyUI 地址。", "error"));
