@@ -18,6 +18,7 @@ const MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
 const UPLOAD_SUBFOLDER = "minimax_h3_timeline_director";
 
 let sessionToken = "";
+let sessionGeneration = 0;
 let currentState = null;
 let revision = 0;
 let socket = null;
@@ -97,16 +98,20 @@ function scheduleSave() {
 
 async function saveState() {
   if (!dirty || saveInFlight || !sessionToken || conflict) return;
+  const requestGeneration = sessionGeneration;
+  const requestToken = sessionToken;
+  const expectedRevision = revision;
   saveInFlight = true;
   dirty = false;
   pendingStateJson = JSON.stringify(currentState);
   try {
     const response = await fetch(API_ROOT + "/state", {
       method: "PUT",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + sessionToken },
-      body: JSON.stringify({ expected_revision: revision, state: JSON.parse(pendingStateJson) }),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + requestToken },
+      body: JSON.stringify({ expected_revision: expectedRevision, state: JSON.parse(pendingStateJson) }),
     });
     const payload = await response.json();
+    if (requestGeneration !== sessionGeneration || requestToken !== sessionToken) return;
     if (response.status === 409) {
       if (JSON.stringify(payload.state) === pendingStateJson) {
         revision = Number(payload.revision) || revision;
@@ -124,12 +129,16 @@ async function saveState() {
     revision = Number(payload.revision) || revision + 1;
     setSyncStatus("已同步 · 版本 " + revision);
   } catch (error) {
-    dirty = true;
-    setSyncStatus("同步失败：" + error.message);
+    if (requestGeneration === sessionGeneration && requestToken === sessionToken) {
+      dirty = true;
+      setSyncStatus("同步失败：" + error.message);
+    }
   } finally {
-    saveInFlight = false;
-    pendingStateJson = "";
-    if (dirty && !conflict) saveTimer = setTimeout(saveState, 700);
+    if (requestGeneration === sessionGeneration && requestToken === sessionToken) {
+      saveInFlight = false;
+      pendingStateJson = "";
+      if (dirty && !conflict) saveTimer = setTimeout(saveState, 700);
+    }
   }
 }
 
@@ -262,6 +271,22 @@ function scheduleMobileReconnect(token) {
 }
 
 async function claimPairingCode() {
+  if (pairButton?.disabled) return;
+  const requestGeneration = ++sessionGeneration;
+  clearTimeout(saveTimer);
+  clearTimeout(reconnectTimer);
+  saveTimer = 0;
+  reconnectTimer = 0;
+  const previousSocket = socket;
+  socket = null;
+  previousSocket?.close();
+  sessionToken = "";
+  currentState = null;
+  revision = 0;
+  saveInFlight = false;
+  pendingStateJson = "";
+  dirty = false;
+  conflict = false;
   const code = String(pairInput?.value || "").trim().toUpperCase();
   if (!/^[A-Z2-9]{8}$/.test(code)) {
     feedback("请输入电脑端显示的 8 位配对码。", "error");
@@ -276,6 +301,7 @@ async function claimPairingCode() {
       body: JSON.stringify({ code }),
     });
     const payload = await response.json();
+    if (requestGeneration !== sessionGeneration) return;
     if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
     sessionToken = payload.token;
     currentState = payload.state;
@@ -288,13 +314,14 @@ async function claimPairingCode() {
     feedback("配对成功，正在建立实时连接…", "success");
     connectEvents(sessionToken);
   } catch (error) {
-    feedback("连接失败：" + error.message, "error");
+    if (requestGeneration === sessionGeneration) feedback("连接失败：" + error.message, "error");
   } finally {
-    pairButton.disabled = false;
+    if (requestGeneration === sessionGeneration) pairButton.disabled = false;
   }
 }
 
 async function restoreSession() {
+  const requestGeneration = sessionGeneration;
   const saved = sessionStorage.getItem("m3td-mobile-token");
   if (!saved) return;
   try {
@@ -303,6 +330,7 @@ async function restoreSession() {
     });
     if (!response.ok) throw new Error("session expired");
     const payload = await response.json();
+    if (requestGeneration !== sessionGeneration) return;
     sessionToken = saved;
     currentState = payload.state;
     revision = Number(payload.revision) || 1;
@@ -311,6 +339,7 @@ async function restoreSession() {
     activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     connectEvents(sessionToken);
   } catch {
+    if (requestGeneration !== sessionGeneration) return;
     // A temporary network failure must not erase a still-valid pairing token.
     // The WebSocket retry will distinguish an offline server from a revoked session.
     sessionToken = saved;
