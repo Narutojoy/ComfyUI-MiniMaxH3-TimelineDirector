@@ -204,6 +204,8 @@ export function attachMobilePairing(ui) {
   };
 
   button.addEventListener("click", async () => {
+    if (button.disabled) return;
+    button.disabled = true;
     dialog.style.display = "flex";
     urlInput.value = mobileUrl;
     currentPairCode = "";
@@ -211,6 +213,7 @@ export function attachMobilePairing(ui) {
     qrBox.replaceChildren();
     setStatus("正在生成配对码…");
     connectionGeneration += 1;
+    const requestGeneration = connectionGeneration;
     clearTimeout(reconnectTimer);
     reconnectTimer = 0;
     reconnectDelay = 1000;
@@ -234,6 +237,7 @@ export function attachMobilePairing(ui) {
         body: JSON.stringify({ node_uuid: nodeUuid(ui), state: ui.state, reference_size: { width: Number(ui.node.widgets?.find(widget => widget.name === "width")?.value) || 832, height: Number(ui.node.widgets?.find(widget => widget.name === "height")?.value) || 480 } }),
       });
       const payload = await response.json();
+      if (requestGeneration !== connectionGeneration) return;
       if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
       token = payload.token;
       revision = payload.revision;
@@ -347,8 +351,12 @@ export function attachMobilePairing(ui) {
       reconnectDelay = 1000;
       connectSocket();
     } catch (error) {
-      token = "";
-      setStatus("配对码生成失败：" + error.message);
+      if (requestGeneration === connectionGeneration) {
+        token = "";
+        setStatus("配对码生成失败：" + error.message);
+      }
+    } finally {
+      if (requestGeneration === connectionGeneration) button.disabled = false;
     }
   });
 
