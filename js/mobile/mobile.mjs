@@ -391,23 +391,23 @@ function renderAssetsPanel() {
     const assigned=segment?.images?.some(id=>String(id)===String(asset.id));
     return `<article class="mobile-asset-card">
       <img src="${escapeHTML(mediaURL(asset.file))}" alt="">
-      <div class="mobile-asset-info"><strong>${escapeHTML(asset.name)}</strong><small>${category}</small>
+      <div class="mobile-asset-info"><input class="mobile-asset-name" data-rename-image="${escapeHTML(asset.id)}" value="${escapeHTML(asset.name)}" aria-label="图片名称"><small>${category}</small>
         <select data-image-category="${escapeHTML(asset.id)}">${imageCategories.map(([key,label])=>`<option value="${key}" ${(asset.group||"character")===key?"selected":""}>${label}</option>`).join("")}</select>
       </div>
       <label class="mobile-assign"><input type="checkbox" data-assign-image="${escapeHTML(asset.id)}" ${assigned?"checked":""}>加入本段</label>
-      <button type="button" class="mobile-icon-button" data-delete-image="${escapeHTML(asset.id)}" aria-label="删除图片">×</button>
+      <div class="mobile-order-actions"><button type="button" data-move-image="${escapeHTML(asset.id)}" data-direction="up" aria-label="图片上移">↑</button><button type="button" data-move-image="${escapeHTML(asset.id)}" data-direction="down" aria-label="图片下移">↓</button><button type="button" class="mobile-icon-button" data-delete-image="${escapeHTML(asset.id)}" aria-label="删除图片">×</button></div>
     </article>`;
   }).join("");
   const audioCards=audios().map(asset=>{
     const category=audioCategories.find(([key])=>key===(asset.audioGroup||"ref"))?.[1]||"音频参考";
     const assigned=segment?.audios?.some(id=>String(id)===String(asset.id));
     return `<article class="mobile-asset-card audio-card">
-      <div class="mobile-audio-symbol">♫</div><div class="mobile-asset-info"><strong>${escapeHTML(asset.name)}</strong><small>${category}</small>
+      <div class="mobile-audio-symbol">♫</div><div class="mobile-asset-info"><input class="mobile-asset-name" data-rename-audio="${escapeHTML(asset.id)}" value="${escapeHTML(asset.name)}" aria-label="音频名称"><small>${category}</small>
         <select data-audio-category="${escapeHTML(asset.id)}">${audioCategories.map(([key,label])=>`<option value="${key}" ${(asset.audioGroup||"ref")===key?"selected":""}>${label}</option>`).join("")}</select>
         <select data-audio-mode="${escapeHTML(asset.id)}"><option value="reference" ${asset.audioMode!=="locked"?"selected":""}>参考音频</option><option value="locked" ${asset.audioMode==="locked"?"selected":""}>锁定音频</option></select>
       </div>
       <label class="mobile-assign"><input type="checkbox" data-assign-audio="${escapeHTML(asset.id)}" ${assigned?"checked":""}>加入本段</label>
-      <button type="button" class="mobile-icon-button" data-delete-audio="${escapeHTML(asset.id)}" aria-label="删除音频">×</button>
+      <div class="mobile-order-actions"><button type="button" data-move-audio="${escapeHTML(asset.id)}" data-direction="up" aria-label="音频上移">↑</button><button type="button" data-move-audio="${escapeHTML(asset.id)}" data-direction="down" aria-label="音频下移">↓</button><button type="button" class="mobile-icon-button" data-delete-audio="${escapeHTML(asset.id)}" aria-label="删除音频">×</button></div>
     </article>`;
   }).join("");
   editorContent.innerHTML = `
@@ -553,6 +553,26 @@ function renderAssetsPanel() {
     scheduleSave();renderPanel();
     feedback("已将当前图片素材应用到所有分段。","success");
   });
+  editorContent.querySelectorAll("[data-rename-image]").forEach(input=>input.addEventListener("change",()=>{
+    const asset=images().find(item=>String(item.id)===input.dataset.renameImage);
+    if(asset){asset.name=input.value.trim()||asset.name;scheduleSave();renderPanel();}
+  }));
+  editorContent.querySelectorAll("[data-rename-audio]").forEach(input=>input.addEventListener("change",()=>{
+    const asset=audios().find(item=>String(item.id)===input.dataset.renameAudio);
+    if(asset){asset.name=input.value.trim()||asset.name;scheduleSave();renderPanel();}
+  }));
+  editorContent.querySelectorAll("[data-move-image]").forEach(button=>button.addEventListener("click",()=>{
+    const list=currentState.images||[],index=list.findIndex(item=>String(item.id)===button.dataset.moveImage);
+    const target=index+(button.dataset.direction==="up"?-1:1);
+    if(index<0||target<0||target>=list.length||list[target].group!==list[index].group)return;
+    [list[index],list[target]]=[list[target],list[index]];scheduleSave();renderPanel();
+  }));
+  editorContent.querySelectorAll("[data-move-audio]").forEach(button=>button.addEventListener("click",()=>{
+    const list=currentState.audios||[],index=list.findIndex(item=>String(item.id)===button.dataset.moveAudio);
+    const target=index+(button.dataset.direction==="up"?-1:1);
+    if(index<0||target<0||target>=list.length||(list[target].audioGroup||"ref")!==(list[index].audioGroup||"ref"))return;
+    [list[index],list[target]]=[list[target],list[index]];scheduleSave();renderPanel();
+  }));
   editorContent.querySelectorAll("[data-image-category]").forEach(select=>select.addEventListener("change",()=>{
     const asset=images().find(item=>String(item.id)===select.dataset.imageCategory);if(asset)asset.group=select.value;scheduleSave();
   }));
