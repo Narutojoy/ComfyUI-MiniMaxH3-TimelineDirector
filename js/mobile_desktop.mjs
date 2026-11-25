@@ -97,6 +97,10 @@ export function attachMobilePairing(ui) {
     applyingRemote = true;
     try {
       ui.state = normalizeMobileState(payload.state);
+      const count = Math.max(1, ui.state.segmentConfig?.segments?.length || 1);
+      ui.activeSegment = Math.max(0, Math.min(Number(ui.state.segmentConfig?.activeIndex) || 0, count - 1));
+      ui.selectedSegments = new Set([ui.activeSegment]);
+      ui.selectWindowGeometry?.();
       ui.sync(false);
       ui.render();
       revision = Number(payload.revision) || revision;
