@@ -84,6 +84,31 @@ export function attachMobilePairing(ui) {
   const codeBox = dialog.querySelector("[data-code]");
   const qrBox = dialog.querySelector("[data-qr]");
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
+  let currentPairCode = "";
+  const renderPairQr = () => {
+    if (!currentPairCode) return;
+    try {
+      const target = new URL(urlInput.value.trim());
+      if (!["http:", "https:"].includes(target.protocol)) throw new Error("页面地址必须使用 HTTP 或 HTTPS");
+      target.hash = "pair=" + encodeURIComponent(currentPairCode);
+      const qr = qrcode(0, "M");
+      qr.addData(target.href);
+      qr.make();
+      const qrImage = document.createElement("img");
+      qrImage.alt = "手机移动导演台配对二维码";
+      qrImage.width = 196;
+      qrImage.height = 196;
+      qrImage.style.cssText = "display:block;width:196px;height:196px;background:#fff;padding:8px;border-radius:10px";
+      qrImage.src = qr.createDataURL(4, 4);
+      qrBox.replaceChildren(qrImage);
+      setStatus("二维码已更新。请确认地址中的主机名是手机能够访问的电脑地址。");
+    } catch (error) {
+      qrBox.replaceChildren();
+      setStatus("页面地址无效：" + error.message);
+    }
+  };
+  dialog.querySelector("[data-refresh-qr]").addEventListener("click", renderPairQr);
+  urlInput.addEventListener("change", renderPairQr);
   let token = "";
   let revision = 0;
   let socket = null;
