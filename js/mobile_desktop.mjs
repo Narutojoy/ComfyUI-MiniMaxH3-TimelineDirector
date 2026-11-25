@@ -159,7 +159,7 @@ export function attachMobilePairing(ui) {
       const response = await fetch(API_ROOT + "/pair/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ node_uuid: nodeUuid(ui), state: ui.state }),
+        body: JSON.stringify({ node_uuid: nodeUuid(ui), state: ui.state, reference_size: { width: Number(ui.node.widgets?.find(widget => widget.name === "width")?.value) || 832, height: Number(ui.node.widgets?.find(widget => widget.name === "height")?.value) || 480 } }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
