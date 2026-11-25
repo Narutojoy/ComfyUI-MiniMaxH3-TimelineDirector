@@ -23,7 +23,7 @@ log = __import__("logging").getLogger("MiniMaxH3TimelineDirector.MobileSync")
 
 PAIR_TTL_SECONDS = 180
 SESSION_TTL_SECONDS = 12 * 60 * 60
-MAX_STATE_BYTES = 2 * 1024 * 1024
+MAX_STATE_BYTES = 8 * 1024 * 1024
 MAX_REQUEST_BYTES = MAX_STATE_BYTES + 4096
 _CODE_RE = re.compile(r"^[A-Z2-9]{8}$")
 _sessions: dict[str, "MobileSession"] = {}
@@ -50,7 +50,7 @@ def _valid_state(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("timeline state must be a JSON object")
     if _json_size(value) > MAX_STATE_BYTES:
-        raise ValueError("timeline state exceeds the 2 MiB limit")
+        raise ValueError("timeline state exceeds the 8 MiB limit")
     return value
 
 
