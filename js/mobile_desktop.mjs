@@ -170,6 +170,7 @@ export function attachMobilePairing(ui) {
       if (requestGeneration === connectionGeneration) {
         localDirty = true;
         setStatus("同步暂时失败，已保留电脑端修改；正在尝试恢复连接。");
+        if (socket?.readyState === WebSocket.OPEN) socket.close();
       }
     } finally {
       if (requestGeneration === connectionGeneration) {
@@ -257,6 +258,14 @@ export function attachMobilePairing(ui) {
           if (message.type === "ready") {
             const remoteRevision = Number(message.revision) || 0;
             if (localDirty) {
+              if (remoteRevision > revision && JSON.stringify(message.state) === JSON.stringify(ui.state)) {
+                revision = remoteRevision;
+                localDirty = false;
+                localQueued = false;
+                reconnectDelay = 1000;
+                setStatus("连接已恢复，服务器内容与电脑端一致 · 版本 " + revision);
+                return;
+              }
               if (remoteRevision !== revision) {
                 conflict = true;
                 setStatus("断线期间两端状态发生变化，已暂停自动同步以防覆盖；请核对两端内容。");
