@@ -311,9 +311,12 @@ async function restoreSession() {
     activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
     connectEvents(sessionToken);
   } catch {
-    sessionStorage.removeItem("m3td-mobile-token");
-    sessionStorage.removeItem("m3td-mobile-node");
+    // A temporary network failure must not erase a still-valid pairing token.
+    // The WebSocket retry will distinguish an offline server from a revoked session.
+    sessionToken = saved;
     setConnected(false);
+    setSyncStatus("暂时无法读取电脑端状态，正在尝试恢复连接…");
+    connectEvents(saved);
   }
 }
 
