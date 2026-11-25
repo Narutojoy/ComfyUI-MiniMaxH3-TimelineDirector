@@ -138,6 +138,7 @@ export function attachMobilePairing(ui) {
   };
   const pushLocal = async () => {
     if (!token || !socket || socket.readyState !== WebSocket.OPEN || conflict || applyingRemote) return;
+    if (pushInFlight) { localQueued = true; return; }
     pushInFlight = true;
     pendingStateJson = JSON.stringify(ui.state);
     try {
