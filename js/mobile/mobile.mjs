@@ -25,6 +25,7 @@ let activePanel = "segments";
 let activeSegment = 0;
 let selectedVideoId = "";
 let mobilePlayhead = 0;
+let mobileTimelineScale = 44;
 let videoDrag = null;
 const previewProxyRequests = new Set();
 let saveTimer = 0;
@@ -359,14 +360,14 @@ function renderSegmentsPanel() {
 function renderVideoTimeline() {
   const list=[...videos()].sort((a,b)=>Number(a.start||0)-Number(b.start||0));
   const end=Math.max(12,...list.map(clip=>Number(clip.start||0)+Number(clip.duration||0)+1));
-  const scale=44;
+  const scale=mobileTimelineScale;
   const selected=list.find(clip=>String(clip.id)===String(selectedVideoId))||list[0]||null;
   selectedVideoId=selected?.id||"";
   mobilePlayhead=Math.max(0,Math.min(mobilePlayhead,end));
   const ruler=Array.from({length:Math.ceil(end/5)+1},(_,i)=>i*5).filter(t=>t<=end).map(t=>'<span style="left:'+(t*scale)+'px">'+t.toFixed(0)+'s</span>').join("");
   const clips=list.map((clip,index)=>'<div class="mobile-timeline-clip '+(String(clip.id)===String(selectedVideoId)?"selected":"")+'" data-video-clip="'+escapeHTML(clip.id)+'" style="left:'+(Number(clip.start||0)*scale)+'px;width:'+Math.max(28,Number(clip.duration||0)*scale)+'px"><button type="button" class="mobile-timeline-handle left" data-video-edge="left" aria-label="调整片段起点"></button><strong>'+escapeHTML(clip.name||"视频 "+(index+1))+'</strong><small>'+Number(clip.duration||0).toFixed(2)+'s</small><button type="button" class="mobile-timeline-handle right" data-video-edge="right" aria-label="调整片段终点"></button></div>').join("");
   const preview=selected?'<div class="mobile-video-preview"><strong>'+escapeHTML(selected.name||"参考视频预览")+'</strong><video controls playsinline preload="metadata" src="'+escapeHTML(mediaURL(selected.file))+'"></video></div>':"";
-  return '<section class="mobile-card mobile-timeline-card"><div class="mobile-card-heading"><h3>视频时间轴</h3><span>拖动片段或两侧边缘调整</span></div>'+(list.length?'<div class="mobile-timeline-scroll"><div class="mobile-timeline-track" style="width:'+Math.max(100,end*scale)+'px"><div class="mobile-timeline-ruler">'+ruler+'</div>'+clips+'<i class="mobile-timeline-playhead" style="left:'+(mobilePlayhead*scale)+'px"></i></div></div><label class="mobile-field mobile-playhead-control">播放位置 · '+mobilePlayhead.toFixed(2)+' 秒<input id="video-playhead" type="range" min="0" max="'+end+'" step="0.0416667" value="'+mobilePlayhead+'"></label><div class="mobile-timeline-actions"><button type="button" class="mobile-secondary" id="split-video" '+(selected?"":"disabled")+'>在播放位置分割</button><button type="button" class="mobile-danger" id="delete-selected-video" '+(selected?"":"disabled")+'>删除选中片段</button></div>'+preview:'<p class="mobile-empty">上传参考视频后，这里会显示可拖动的视频时间轴。</p>')+'</section>';
+  return '<section class="mobile-card mobile-timeline-card"><div class="mobile-card-heading"><h3>视频时间轴</h3><button type="button" class="mobile-secondary" id="fit-video-timeline">适应全部</button></div><label class="mobile-field">时间轴缩放<input id="video-timeline-zoom" type="range" min="24" max="100" step="4" value="${mobileTimelineScale}"></label>'+(list.length?'<div class="mobile-timeline-scroll"><div class="mobile-timeline-track" style="width:'+Math.max(100,end*scale)+'px"><div class="mobile-timeline-ruler">'+ruler+'</div>'+clips+'<i class="mobile-timeline-playhead" style="left:'+(mobilePlayhead*scale)+'px"></i></div></div><label class="mobile-field mobile-playhead-control">播放位置 · '+mobilePlayhead.toFixed(2)+' 秒<input id="video-playhead" type="range" min="0" max="'+end+'" step="0.0416667" value="'+mobilePlayhead+'"></label><div class="mobile-timeline-actions"><button type="button" class="mobile-secondary" id="split-video" '+(selected?"":"disabled")+'>在播放位置分割</button><button type="button" class="mobile-danger" id="delete-selected-video" '+(selected?"":"disabled")+'>删除选中片段</button></div>'+preview:'<p class="mobile-empty">上传参考视频后，这里会显示可拖动的视频时间轴。</p>')+'</section>';
 }
 
 async function loadMobilePreview(clip, video) {
@@ -449,6 +450,15 @@ function renderAssetsPanel() {
     }
     renderPanel();
   });
+  const zoomInput=editorContent.querySelector("#video-timeline-zoom");
+  zoomInput?.addEventListener("change",event=>{
+    mobileTimelineScale=Math.max(24,Math.min(100,Number(event.target.value)||44));renderPanel();
+  });
+  editorContent.querySelector("#fit-video-timeline")?.addEventListener("click",()=>{
+    const end=Math.max(12,...videos().map(clip=>Number(clip.start||0)+Number(clip.duration||0)+1));
+    const width=editorContent.querySelector(".mobile-timeline-scroll")?.clientWidth||320;
+    mobileTimelineScale=Math.max(24,Math.min(100,(width-24)/end));renderPanel();
+  });
   const previewClip=videos().find(item=>String(item.id)===String(selectedVideoId));
   const previewElement=editorContent.querySelector(".mobile-video-preview video");
   loadMobilePreview(previewClip,previewElement);
@@ -467,7 +477,7 @@ function renderAssetsPanel() {
       const slider=editorContent.querySelector("#video-playhead");
       if(slider)slider.value=String(mobilePlayhead);
       const marker=editorContent.querySelector(".mobile-timeline-playhead");
-      if(marker)marker.style.left=(mobilePlayhead*44)+"px";
+      if(marker)marker.style.left=(mobilePlayhead*mobileTimelineScale)+"px";
       const label=editorContent.querySelector(".mobile-playhead-control");
       if(label)label.firstChild.textContent="播放位置 · "+mobilePlayhead.toFixed(2)+" 秒";
     });
@@ -510,7 +520,7 @@ function renderAssetsPanel() {
     if(!videoDrag||event.pointerId!==videoDrag.pointerId)return;
     event.preventDefault();
     const clip=videoDrag.clip,edge=videoDrag.edge,start=videoDrag.start,duration=videoDrag.duration,trimStart=videoDrag.trimStart;
-    const delta=Math.round(((event.clientX-videoDrag.startX)/44)*24)/24;
+    const delta=Math.round(((event.clientX-videoDrag.startX)/mobileTimelineScale)*24)/24;
     if(edge==="move"){
       clip.start=Math.max(0,start+delta);
       const others=videos().filter(item=>item.id!==clip.id);
@@ -526,7 +536,7 @@ function renderAssetsPanel() {
       clip.duration=Math.max(5/24,Math.min(available,duration+delta));
     }
     const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
-    if(bar){bar.style.left=(clip.start*44)+"px";bar.style.width=Math.max(28,clip.duration*44)+"px";}
+    if(bar){bar.style.left=(clip.start*mobileTimelineScale)+"px";bar.style.width=Math.max(28,clip.duration*44)+"px";}
   };
   editorContent.querySelector("#split-video")?.addEventListener("click",()=>{
     const index=videos().findIndex(item=>String(item.id)===String(selectedVideoId));
