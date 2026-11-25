@@ -37,6 +37,8 @@ const segments = () => currentState?.segmentConfig?.segments || [];
 const groups = () => currentState?.segmentConfig?.groups || [];
 const images = () => currentState?.images || [];
 const audios = () => currentState?.audios || [];
+const videos = () => currentState?.videoClips || [];
+const mediaURL = file => { const parts=String(file||"").replace(/\\/g,"/").split("/"); const filename=parts.pop(); const params=new URLSearchParams({filename,type:"input"}); if(parts.length)params.set("subfolder",parts.join("/")); return "/view?"+params.toString(); };
 const segmentLabel = (segment,index) => segment?.name || "第 " + (index+1) + " 段";
 const setSyncStatus = text => { if(editorSyncStatus) editorSyncStatus.textContent = text; };
 
@@ -361,9 +363,9 @@ function renderAssetsPanel() {
     <section class="mobile-card">
       <div class="mobile-card-heading"><h3>上传素材</h3><span>最大 512 MB</span></div>
       <label class="mobile-field">素材分类
-        <select id="upload-category"><option value="character">人物图片</option><option value="props">道具图片</option><option value="scene">环境图片</option><option value="ref">音频参考</option><option value="music">音乐参考</option></select>
+        <select id="upload-category"><option value="character">人物图片</option><option value="props">道具图片</option><option value="scene">环境图片</option><option value="ref">音频参考</option><option value="music">音乐参考</option><option value="video">参考视频</option></select>
       </label>
-      <label class="mobile-upload-button">选择图片或音频文件<input id="mobile-upload" type="file" accept="image/*,audio/*" multiple></label>
+      <label class="mobile-upload-button">选择图片、音频或视频文件<input id="mobile-upload" type="file" accept="image/*,audio/*,video/*" multiple></label>
       <p class="mobile-hint">上传后会加入素材库；如当前只有一个分段，系统会按电脑端规则自动加入该段。</p>
     </section>
     <section class="mobile-card"><div class="mobile-card-heading"><h3>图片素材（${images().length}）</h3><span>人物 / 道具 / 环境</span></div>
@@ -378,7 +380,7 @@ function renderAssetsPanel() {
   editorContent.querySelector("#mobile-upload").addEventListener("change",async event=>{
     const category=editorContent.querySelector("#upload-category").value;
     for(const file of Array.from(event.target.files||[])){
-      await uploadAsset(file,["ref","music"].includes(category)?"audio":"image",category);
+      await uploadAsset(file,["ref","music"].includes(category)?"audio":category==="video"?"video":"image",category);
     }
     renderPanel();
   });
