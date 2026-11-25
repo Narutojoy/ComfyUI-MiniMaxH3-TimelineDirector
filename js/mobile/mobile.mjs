@@ -107,6 +107,13 @@ async function saveState() {
 function receiveRemote(message) {
   const nextRevision = Number(message.revision) || 0;
   if (nextRevision <= revision) return;
+  // The relay broadcasts writes to every socket, including the writer. Treat
+  // our own in-flight save echo as an acknowledgement, not a concurrent edit.
+  if (saveInFlight && JSON.stringify(message.state) === JSON.stringify(currentState)) {
+    revision = nextRevision;
+    setSyncStatus("已同步 · 版本 " + revision);
+    return;
+  }
   if (dirty || saveInFlight) {
     conflict = true;
     dirty = false;
