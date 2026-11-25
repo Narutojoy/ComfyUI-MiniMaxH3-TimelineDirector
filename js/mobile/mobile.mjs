@@ -384,7 +384,7 @@ function renderAssetsPanel() {
     <section class="mobile-card"><div class="mobile-card-heading"><h3>参考视频（${videos().length}）</h3><label class="mobile-switch"><input id="video-audio-enabled" type="checkbox" ${currentState.videoAudioEnabled===false?"":"checked"}><span>保留视频音轨</span></label></div>
       ${videos().map((clip,index)=>`<article class="mobile-asset-card video-card"><video src="${escapeHTML(mediaURL(clip.file))}" muted playsinline preload="metadata"></video><div class="mobile-asset-info"><strong>${escapeHTML(clip.name||"参考视频 "+(index+1))}</strong><small>${Number(clip.duration||0).toFixed(2)} 秒 · ${clip.hasAudio?"含音轨":"无音轨"}</small><label>开始位置<input type="number" step="0.04" min="0" data-video-start="${escapeHTML(clip.id)}" value="${Number(clip.start||0).toFixed(2)}"></label><label>使用时长<input type="number" step="0.04" min="0.21" data-video-duration="${escapeHTML(clip.id)}" value="${Number(clip.duration||0).toFixed(2)}"></label><select data-video-mode="${escapeHTML(clip.id)}"><option value="guide" ${clip.referenceMode==="guide"?"selected":""}>完整参考</option><option value="edit" ${clip.referenceMode==="edit"?"selected":""}>普通参考视频</option><option value="boundary" ${clip.referenceMode==="boundary"?"selected":""}>边界参考</option></select></div><button type="button" class="mobile-icon-button" data-delete-video="${escapeHTML(clip.id)}" aria-label="删除视频">×</button></article>`).join("")||'<p class="mobile-empty">还没有参考视频。</p>'}
     </section>
-    <section class="mobile-card"><div class="mobile-card-heading"><h3>图片素材（${images().length}）</h3><span>人物 / 道具 / 环境</span></div>
+    <section class="mobile-card"><div class="mobile-card-heading"><h3>图片素材（${images().length}）</h3><label class="mobile-switch"><input id="global-apply-images" type="checkbox"><span>应用到所有分段</span></label></div>
       ${imageCards||'<p class="mobile-empty">还没有图片素材。</p>'}
     </section>
     <section class="mobile-card"><div class="mobile-card-heading"><h3>音频素材（${audios().length}）</h3><span>参考 / 锁定</span></div>
@@ -419,6 +419,13 @@ function renderAssetsPanel() {
     currentState.videoClips=videos().filter(item=>String(item.id)!==button.dataset.deleteVideo);
     scheduleSave();renderPanel();
   }));
+  editorContent.querySelector("#global-apply-images").addEventListener("change",event=>{
+    if(!event.target.checked)return;
+    const ids=images().map(asset=>asset.id).slice(0,9);
+    for(const item of segments())item.images=ids.slice();
+    scheduleSave();renderPanel();
+    feedback("已将当前图片素材应用到所有分段。","success");
+  });
   editorContent.querySelectorAll("[data-image-category]").forEach(select=>select.addEventListener("change",()=>{
     const asset=images().find(item=>String(item.id)===select.dataset.imageCategory);if(asset)asset.group=select.value;scheduleSave();
   }));
