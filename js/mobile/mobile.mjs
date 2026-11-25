@@ -21,6 +21,8 @@ let sessionToken = "";
 let currentState = null;
 let revision = 0;
 let socket = null;
+let reconnectTimer = 0;
+let reconnectDelay = 1000;
 let activePanel = "segments";
 let activeSegment = 0;
 let selectedVideoId = "";
@@ -151,23 +153,63 @@ function receiveRemote(message) {
 }
 
 function connectEvents(token) {
-  socket?.close();
+  clearTimeout(reconnectTimer);
+  reconnectTimer = 0;
   const url = new URL(API_ROOT + "/events", window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  socket = new WebSocket(url);
-  socket.addEventListener("open", () => socket.send(JSON.stringify({ token })));
-  socket.addEventListener("message", event => {
+  let activeSocket;
+  try {
+    activeSocket = new WebSocket(url);
+  } catch {
+    scheduleMobileReconnect(token);
+    return;
+  }
+  const previousSocket = socket;
+  socket = activeSocket;
+  if (previousSocket && previousSocket !== activeSocket) previousSocket.close();
+  activeSocket.addEventListener("open", () => {
+    if (socket === activeSocket) activeSocket.send(JSON.stringify({ token }));
+  });
+  activeSocket.addEventListener("message", event => {
+    if (socket !== activeSocket) return;
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
     if (message.type === "ready") {
-      currentState = message.state;
-      revision = Number(message.revision) || 1;
-      activeSegment = Number(currentState.segmentConfig?.activeIndex) || 0;
+      const remoteRevision = Number(message.revision) || 0;
+      if (dirty || saveInFlight) {
+        if (remoteRevision > revision && JSON.stringify(message.state) === JSON.stringify(currentState)) {
+          revision = remoteRevision;
+          dirty = false;
+          clearTimeout(saveTimer);
+          setSyncStatus("连接恢复，服务器内容与手机一致 · 版本 " + revision);
+        } else if (remoteRevision !== revision) {
+          conflict = true;
+          clearTimeout(saveTimer);
+          setSyncStatus("断线期间两端内容均有变化，已暂停同步以防覆盖。请核对后重新配对。");
+          feedback("检测到断线期间的并发修改，系统保留当前手机内容，没有自动覆盖。", "error");
+          activeSocket.close();
+          return;
+        } else {
+          setSyncStatus("连接已恢复，正在补同步手机端修改…");
+          if (dirty && !saveInFlight) saveState();
+        }
+      } else if (remoteRevision >= revision) {
+        if (remoteRevision > revision) {
+          currentState = message.state;
+          activeSegment = Math.max(0, Math.min(Number(currentState.segmentConfig?.activeIndex) || 0, Math.max(0, segments().length - 1)));
+          renderPanel();
+        }
+        revision = remoteRevision;
+        setSyncStatus("已连接 · 版本 " + revision);
+      } else {
+        conflict = true;
+        setSyncStatus("服务器版本低于手机端已知版本，已暂停同步以防数据丢失。");
+        activeSocket.close();
+        return;
+      }
+      reconnectDelay = 1000;
       nodeUuid = message.node_uuid || nodeUuid;
-      conflict = false;
-      dirty = false;
       setConnected(true, "已连接到电脑端。手机编辑会实时同步回对应导演台。");
-      setSyncStatus("已连接 · 版本 " + revision);
       feedback("连接成功，手机端编辑已启用。", "success");
     } else if (message.type === "state") {
       receiveRemote(message);
@@ -175,10 +217,12 @@ function connectEvents(token) {
       feedback("配对成功，正在建立实时同步。", "success");
     }
   });
-  socket.addEventListener("close", event => {
-    if (event.target !== socket) return;
+  activeSocket.addEventListener("close", event => {
+    if (socket !== activeSocket) return;
     if (event.code === 4002 || event.code === 4003) {
       clearTimeout(saveTimer);
+      clearTimeout(reconnectTimer);
+      reconnectTimer = 0;
       sessionStorage.removeItem("m3td-mobile-token");
       sessionStorage.removeItem("m3td-mobile-node");
       sessionToken = "";
@@ -191,11 +235,24 @@ function connectEvents(token) {
       feedback("当前手机授权已失效，请重新扫描电脑端二维码。", "error");
     } else if (sessionToken) {
       setConnected(false);
-      setSyncStatus("连接已断开");
-      feedback("连接已断开。请检查网络；网络恢复后可刷新页面重新连接。", "error");
+      setSyncStatus("连接已断开，正在自动重连…");
+      scheduleMobileReconnect(sessionToken);
     }
   });
-  socket.addEventListener("error", () => feedback("实时连接失败，请确认手机和电脑能访问同一个 ComfyUI 地址。", "error"));
+  activeSocket.addEventListener("error", () => {
+    if (socket === activeSocket) setSyncStatus("实时连接中断，正在尝试自动重连…");
+  });
+}
+
+function scheduleMobileReconnect(token) {
+  if (!token || conflict || reconnectTimer) return;
+  const delay = reconnectDelay;
+  reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+  setSyncStatus("网络中断，" + Math.ceil(delay / 1000) + " 秒后自动重连…");
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = 0;
+    if (sessionToken === token) connectEvents(token);
+  }, delay);
 }
 
 async function claimPairingCode() {
