@@ -44,7 +44,7 @@ class MobileSession:
 
 
 def _json_size(value: Any) -> int:
-    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
 
 
 def _valid_state(value: Any) -> dict[str, Any]:
@@ -147,7 +147,7 @@ async def mobile_pair_create(request: web.Request) -> web.Response:
             "width": max(64, min(4096, int(float(raw_size.get("width", 832))))),
             "height": max(64, min(4096, int(float(raw_size.get("height", 480))))),
         }
-    except (ValueError, TypeError) as exc:
+    except (ValueError, TypeError, OverflowError) as exc:
         return web.json_response({"error": str(exc)}, status=400)
 
     session_id = secrets.token_urlsafe(18)
