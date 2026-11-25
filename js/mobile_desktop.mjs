@@ -237,7 +237,15 @@ export function attachMobilePairing(ui) {
         body: JSON.stringify({ node_uuid: nodeUuid(ui), state: ui.state, reference_size: { width: Number(ui.node.widgets?.find(widget => widget.name === "width")?.value) || 832, height: Number(ui.node.widgets?.find(widget => widget.name === "height")?.value) || 480 } }),
       });
       const payload = await response.json();
-      if (requestGeneration !== connectionGeneration) return;
+      if (requestGeneration !== connectionGeneration) {
+        if (payload.token) {
+          fetch(API_ROOT + "/session/revoke", {
+            method: "POST",
+            headers: { Authorization: "Bearer " + payload.token },
+          }).catch(() => {});
+        }
+        return;
+      }
       if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
       token = payload.token;
       revision = payload.revision;
