@@ -39,6 +39,7 @@ class MobileSession:
     reference_size: dict[str, int] = field(default_factory=lambda: {"width": 832, "height": 480})
     mobile_token_hash: str = ""
     revision: int = 1
+    updated_at: float = field(default_factory=time.time)
     expires_at: float = field(default_factory=lambda: time.time() + SESSION_TTL_SECONDS)
     sockets: set[web.WebSocketResponse] = field(default_factory=set)
 
@@ -232,6 +233,7 @@ async def mobile_pair_claim(request: web.Request) -> web.Response:
         "node_uuid": session.node_uuid,
         "state": session.state,
         "revision": session.revision,
+        "updated_at": session.updated_at,
         "reference_size": session.reference_size,
     })
 
@@ -275,9 +277,11 @@ async def mobile_state_put(request: web.Request) -> web.Response:
             }, status=409)
         session.state = state
         session.revision += 1
+        session.updated_at = time.time()
         revision = session.revision
-    await _broadcast(session, {"type": "state", "state": state, "revision": revision})
-    return web.json_response({"ok": True, "revision": revision})
+        updated_at = session.updated_at
+    await _broadcast(session, {"type": "state", "state": state, "revision": revision, "updated_at": updated_at})
+    return web.json_response({"ok": True, "revision": revision, "updated_at": updated_at})
 
 
 @PromptServer.instance.routes.post("/minimax_h3_timeline/mobile/session/revoke")
@@ -351,7 +355,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         if session is None:
             await socket.close(code=4003, message=b"Session revoked")
             return socket
-        await socket.send_json({"type": "ready", "revision": session.revision, "state": session.state})
+        await socket.send_json({"type": "ready", "revision": session.revision, "updated_at": session.updated_at, "state": session.state})
         async for message in socket:
             if message.type == WSMsgType.ERROR:
                 break
