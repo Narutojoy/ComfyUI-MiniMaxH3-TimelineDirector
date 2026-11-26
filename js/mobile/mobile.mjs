@@ -218,12 +218,19 @@ function receiveExecutionStatus(message) {
     if (hasSegmentProgress) {
       const enabledSegments = segments().map((segment, index) => ({ segment, index }))
         .filter(item => item.segment?.enabled !== false);
-      const enabledRank = enabledSegments.findIndex(item => item.index === parsedIndex);
-      if (enabledRank >= 0) {
+      const explicitRank = Number(message.enabled_segment_index);
+      const explicitTotal = Number(message.enabled_segment_count);
+      const hasExplicitEnabledPosition = Number.isInteger(explicitRank) && explicitRank >= 0 &&
+        Number.isInteger(explicitTotal) && explicitTotal > explicitRank;
+      const enabledRank = hasExplicitEnabledPosition
+        ? explicitRank
+        : enabledSegments.findIndex(item => item.index === parsedIndex);
+      const enabledTotal = hasExplicitEnabledPosition ? explicitTotal : enabledSegments.length;
+      if (enabledRank >= 0 && enabledRank < enabledTotal) {
         executingSegmentIndex = parsedIndex;
         if (runSegmentLabel) {
           const segmentPrefix = message.segment_status === "completed" ? "已完成启用分段：" : "当前启用分段：";
-          runSegmentLabel.textContent = segmentPrefix + (enabledRank + 1) + " / " + enabledSegments.length +
+          runSegmentLabel.textContent = segmentPrefix + (enabledRank + 1) + " / " + enabledTotal +
             "（原第 " + (parsedIndex + 1) + " 段）";
         }
       }
