@@ -13,6 +13,7 @@ const editorHeading = document.querySelector("#editor-heading");
 const editorSyncStatus = document.querySelector("#editor-sync-status");
 const runButton = document.querySelector("#mobile-run-button");
 const stopButton = document.querySelector("#mobile-stop-button");
+const saveWorkflowButton = document.querySelector("#mobile-save-workflow-button");
 const runStatus = document.querySelector("#mobile-run-status");
 const runDetail = document.querySelector("#mobile-run-detail");
 const runProgressBar = document.querySelector("#mobile-run-progress-bar");
@@ -66,8 +67,9 @@ function setRunStatus(status, detail = "", percent = null) {
   if (runStatus) runStatus.textContent = status;
   if (runDetail) runDetail.textContent = detail;
   if (runProgressBar) runProgressBar.style.width = percent == null ? "0%" : Math.max(0, Math.min(100, percent)) + "%";
-  if (runButton) runButton.disabled = workflowBusy || !sessionToken || conflict;
+  if (runButton) runButton.disabled = workflowBusy || !!pendingCommandId || !sessionToken || conflict;
   if (stopButton) stopButton.disabled = !activePromptId || !sessionToken;
+  if (saveWorkflowButton) saveWorkflowButton.disabled = !!pendingCommandId || !sessionToken || conflict;
 }
 
 async function flushStateBeforeCommand() {
@@ -91,6 +93,18 @@ function sendRunCommand(type, extra = {}) {
   pendingCommandType = type;
   socket.send(JSON.stringify({ type, request_id: requestId, revision, ...extra }));
   return requestId;
+}
+
+async function requestWorkflowSave() {
+  if (!sessionToken || pendingCommandId) return;
+  setRunStatus("正在同步", "正在确认手机端最新修改已同步到电脑…");
+  try {
+    await flushStateBeforeCommand();
+    sendRunCommand("save_request");
+    setRunStatus("保存请求已发送", "电脑端正在执行 ComfyUI 原生保存命令…");
+  } catch (error) {
+    setRunStatus("无法保存", error.message);
+  }
 }
 
 async function requestWorkflowRun() {
@@ -342,7 +356,9 @@ function connectEvents(token) {
       pendingCommandId = "";
       pendingCommandType = "";
       if (message.ok) {
-        if (message.status === "queued" && !executionTerminal) {
+        if (message.status === "saved") {
+          setRunStatus("已保存", "ComfyUI 已完成工作流保存。");
+        } else if (message.status === "queued" && !executionTerminal) {
           workflowBusy = true;
           setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
         } else if (message.status === "interrupt_requested") {
@@ -359,6 +375,7 @@ function connectEvents(token) {
           queue_failed: "提交工作流时发生错误",
           no_matching_active_prompt: "没有找到可停止的当前任务",
           interrupt_failed: "停止请求失败",
+          save_failed: "电脑端保存工作流失败",
         };
         setRunStatus("操作未完成", errors[message.error] || message.message || message.error || "未知错误");
       }
@@ -1099,6 +1116,7 @@ document.querySelector("#desktop-mode")?.addEventListener("click",()=>{window.lo
 pairButton?.addEventListener("click",claimPairingCode);
 runButton?.addEventListener("click", requestWorkflowRun);
 stopButton?.addEventListener("click", requestWorkflowStop);
+saveWorkflowButton?.addEventListener("click", requestWorkflowSave);
 pairInput?.addEventListener("keydown",event=>{if(event.key==="Enter")claimPairingCode();});
 pairInput?.addEventListener("input",()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);});
 document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.addEventListener("click",()=>{
