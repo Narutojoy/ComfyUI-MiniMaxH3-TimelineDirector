@@ -430,7 +430,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
             elif socket_role == "desktop":
                 if event_type in {"command_result", "execution_status", "queue_status"}:
                     safe_event = {"type": event_type}
-                    for key in ("request_id", "ok", "error", "status", "prompt_id", "node", "value", "max", "message", "percent"):
+                    for key in ("request_id", "ok", "error", "status", "prompt_id", "node", "value", "max", "message", "percent", "segment_index", "segment_count"):
                         if key in event:
                             value = event[key]
                             if isinstance(value, (str, int, float, bool)) or value is None:
