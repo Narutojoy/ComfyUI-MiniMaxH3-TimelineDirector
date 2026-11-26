@@ -209,7 +209,12 @@ export function attachMobilePairing(ui) {
         return;
       }
       try {
-        await api.interrupt(promptId);
+        const response = await api.fetchApi("/interrupt", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt_id: promptId }),
+        });
+        if (!response.ok) throw new Error("HTTP " + response.status);
         reply(true, "", { status: "interrupt_requested", prompt_id: promptId });
       } catch (error) {
         reply(false, "interrupt_failed", { message: String(error?.message || error).slice(0, 400) });
