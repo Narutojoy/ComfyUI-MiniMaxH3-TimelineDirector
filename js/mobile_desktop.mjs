@@ -148,6 +148,7 @@ export function attachMobilePairing(ui) {
   let activePromptId = "";
   let workflowQueued = false;
   let pendingRunRequest = "";
+  let deferredStateMessage = null;
   const handledCommands = new Set();
 
   const setStatus = message => { status.textContent = message; };
@@ -177,11 +178,11 @@ export function attachMobilePairing(ui) {
     if (handledCommands.size > 100) handledCommands.delete(handledCommands.values().next().value);
     const reply = (ok, error = "", extra = {}) =>
       sendMobileEvent({ type: "command_result", request_id: requestId, ok, error, ...extra });
-    if (Number(message.revision) !== revision || conflict || localDirty || pendingTimer || pushInFlight) {
-      reply(false, "desktop_state_not_synced");
-      return;
-    }
     if (message.type === "run_request") {
+      if (Number(message.revision) !== revision || conflict || localDirty || pendingTimer || pushInFlight) {
+        reply(false, "desktop_state_not_synced");
+        return;
+      }
       if (pendingRunRequest || activePromptId || workflowQueued) {
         reply(false, "workflow_busy");
         return;
@@ -199,6 +200,14 @@ export function attachMobilePairing(ui) {
         reply(false, "queue_failed", { message: String(error?.message || error).slice(0, 400) });
       } finally {
         pendingRunRequest = "";
+        if (deferredStateMessage) {
+          const deferred = deferredStateMessage;
+          deferredStateMessage = null;
+          if (!localDirty && !conflict) {
+            applyRemote(deferred);
+            setStatus("手机端后续修改已同步到电脑。");
+          }
+        }
       }
       return;
     }
@@ -391,7 +400,9 @@ export function attachMobilePairing(ui) {
           } else if (message.type === "state") {
             const nextRevision = Number(message.revision) || 0;
             if (nextRevision <= revision) return;
-            if (pushInFlight && JSON.stringify(message.state) === pendingStateJson) {
+            if (pendingRunRequest) {
+              deferredStateMessage = message;
+            } else if (pushInFlight && JSON.stringify(message.state) === pendingStateJson) {
               revision = nextRevision;
               localDirty = false;
               setStatus("电脑端修改已同步。");
