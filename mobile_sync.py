@@ -408,13 +408,18 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 except (ValueError, TypeError, AttributeError):
                     await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_request_id"})
                     continue
-                command_revision = event.get("revision")
-                if not isinstance(command_revision, int) or isinstance(command_revision, bool):
-                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_revision"})
-                    continue
-                if command_revision != session.revision:
-                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "revision_mismatch", "revision": session.revision})
-                    continue
+                if event_type == "run_request":
+                    command_revision = event.get("revision")
+                    if not isinstance(command_revision, int) or isinstance(command_revision, bool):
+                        await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_revision"})
+                        continue
+                    if command_revision != session.revision:
+                        await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "revision_mismatch", "revision": session.revision})
+                        continue
+                else:
+                    # Stopping an active job must remain available even if the
+                    # timeline state has changed since the job was submitted.
+                    command_revision = session.revision
                 command = {"type": event_type, "request_id": request_id, "revision": command_revision}
                 if event_type == "interrupt_request":
                     command["prompt_id"] = str(event.get("prompt_id") or "")[:128]
