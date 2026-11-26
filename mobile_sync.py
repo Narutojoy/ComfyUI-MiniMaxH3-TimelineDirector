@@ -248,6 +248,7 @@ async def mobile_state_get(request: web.Request) -> web.Response:
         "node_uuid": session.node_uuid,
         "state": session.state,
         "revision": session.revision,
+        "updated_at": session.updated_at,
         "reference_size": session.reference_size,
     })
 
