@@ -212,7 +212,7 @@ export function attachMobilePairing(ui) {
     }
   };
 
-  // Shared WebSocket lifecycle for both first-time pairing and restored sessions.
+  // Shared WebSocket lifecycle for first-time pairing and restored sessions.
       const scheduleReconnect = () => {
         if (!token || conflict || reconnectTimer) return;
         const delay = reconnectDelay;
@@ -383,9 +383,8 @@ export function attachMobilePairing(ui) {
         if (payload.token) {
           fetch(API_ROOT + "/session/revoke", {
             method: "POST",
-                localDirty = false;
-      reconnectDelay = 1000;
-      startRealtimeConnection();) => {});
+            headers: { Authorization: "Bearer " + payload.token },
+          }).catch(() => {});
         }
         return;
       }
@@ -397,113 +396,9 @@ export function attachMobilePairing(ui) {
       currentPairCode = payload.code;
       renderPairQr();
       setStatus("请用手机扫描二维码，或手动打开页面输入配对码。（3 分钟有效）");
-      const connectSocket = () => {
-        if (!token || conflict) return;
-        clearTimeout(reconnectTimer);
-        reconnectTimer = 0;
-        const wsUrl = new URL(API_ROOT + "/events", window.location.href);
-        wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
-        let activeSocket;
-        try {
-          activeSocket = new WebSocket(wsUrl);
-        } catch {
-          scheduleReconnect();
-          return;
-        }
-        socket = activeSocket;
-        activeSocket.addEventListener("open", () => {
-          if (socket === activeSocket) activeSocket.send(JSON.stringify({ token }));
-        });
-        activeSocket.addEventListener("message", event => {
-          if (socket !== activeSocket) return;
-          let message;
-          try { message = JSON.parse(event.data); } catch { return; }
-          if (message.type === "ready") {
-            const remoteRevision = Number(message.revision) || 0;
-            if (localDirty) {
-              if (remoteRevision > revision && JSON.stringify(message.state) === JSON.stringify(ui.state)) {
-                revision = remoteRevision;
-                localDirty = false;
-                localQueued = false;
-                reconnectDelay = 1000;
-                setStatus("连接已恢复，服务器内容与电脑端一致 · 版本 " + revision);
-                return;
-              }
-              if (remoteRevision !== revision) {
-                conflict = true;
-                setStatus("断线期间两端状态发生变化，已暂停自动同步以防覆盖；请核对两端内容。");
-                activeSocket.close();
-                return;
-              }
-              revision = remoteRevision;
-              reconnectDelay = 1000;
-              setStatus("连接已恢复，正在安全补同步电脑端修改…");
-              pushLocal();
-            } else if (remoteRevision >= revision) {
-              if (remoteRevision > revision) applyRemote(message);
-              revision = remoteRevision;
-              reconnectDelay = 1000;
-              setStatus("电脑端同步连接已恢复 · 版本 " + revision);
-            } else {
-              conflict = true;
-              setStatus("服务器版本低于电脑端已知版本，已暂停同步以防数据丢失。");
-              activeSocket.close();
-            }
-          } else if (message.type === "paired") {
-            setStatus("手机已完成配对，实时同步已建立。");
-          } else if (message.type === "state") {
-            const nextRevision = Number(message.revision) || 0;
-            if (nextRevision <= revision) return;
-            if (pushInFlight && JSON.stringify(message.state) === pendingStateJson) {
-              revision = nextRevision;
-              localDirty = false;
-              setStatus("电脑端修改已同步。");
-            } else if (localDirty || pendingTimer || pushInFlight) {
-              conflict = true;
-              setStatus("手机端与电脑端同时修改。同步已暂停，保留两端内容，请先核对。");
-            } else {
-              applyRemote(message);
-              setStatus("手机端修改已同步到电脑。");
-            }
-          }
-        });
-        activeSocket.addEventListener("close", event => {
-          if (socket !== activeSocket) return;
-          if (event.code === 4002 || event.code === 4003) {
-            connectionGeneration += 1;
-            pushInFlight = false;
-            token = "";
-            clearTimeout(reconnectTimer);
-            reconnectTimer = 0;
-            clearTimeout(pendingTimer);
-            pendingTimer = 0;
-            localQueued = false;
-            pendingStateJson = "";
-            localDirty = false;
-            conflict = false;
-            setStatus("手机授权已撤销、过期或配对已被替换，请重新配对。");
-          } else if (token && !conflict) {
-            setStatus("连接中断，正在自动重连…");
-            scheduleReconnect();
-          }
-        });
-        activeSocket.addEventListener("error", () => {
-          if (socket === activeSocket) setStatus("实时连接中断，正在尝试自动重连…");
-        });
-      };
-      const scheduleReconnect = () => {
-        if (!token || conflict || reconnectTimer) return;
-        const delay = reconnectDelay;
-        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
-        setStatus("网络连接中断，" + Math.ceil(delay / 1000) + " 秒后自动重连…");
-        reconnectTimer = setTimeout(() => {
-          reconnectTimer = 0;
-          connectSocket();
-        }, delay);
-      };
       localDirty = false;
       reconnectDelay = 1000;
-      connectSocket();
+      startRealtimeConnection();
     } catch (error) {
       if (requestGeneration === connectionGeneration) {
         token = "";
