@@ -72,8 +72,9 @@ export function attachMobilePairing(ui) {
   if (!head) return;
 
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
-  const currentNodeUuid = nodeUuid(ui);
-  const credentialKey = "m3td-mobile-desktop-token:" + currentNodeUuid;
+  // Resolve the node identity when needed. ComfyUI may restore node.properties
+  // after onNodeCreated, so capturing the UUID here can retain a temporary ID.
+  const credentialKey = () => "m3td-mobile-desktop-token:" + nodeUuid(ui);
   const button = document.createElement("button");
   button.type = "button";
   button.className = "m3td-btn";
@@ -129,7 +130,7 @@ export function attachMobilePairing(ui) {
   dialog.querySelector("[data-refresh-qr]").addEventListener("click", renderPairQr);
   urlInput.addEventListener("change", renderPairQr);
   let token = "";
-  try { token = localStorage.getItem(credentialKey) || ""; } catch (_) {}
+  try { token = localStorage.getItem(credentialKey()) || ""; } catch (_) {}
   let revision = 0;
   let socket = null;
   let applyingRemote = false;
@@ -268,7 +269,7 @@ export function attachMobilePairing(ui) {
       }
       if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
       token = payload.token;
-      try { localStorage.setItem(credentialKey, token); } catch (_) {}
+      try { localStorage.setItem(credentialKey(), token); } catch (_) {}
       revision = payload.revision;
       codeBox.textContent = payload.code;
       currentPairCode = payload.code;
@@ -398,16 +399,18 @@ export function attachMobilePairing(ui) {
     dialog.style.display = "flex";
     setStatus("正在检查手机端最新进度…");
     try {
-      // The node UUID is persisted in the workflow, while an older desktop
-      // credential may have been stored under a previous UUID. Validate every
-      // saved token against the server before adopting it; never trust the key
-      // name alone and never delete the original credential during migration.
+      // Resolve identity at click time, after ComfyUI has finished configuring
+      // the workflow node. Do not compare against an onNodeCreated-time UUID.
+      const currentNodeUuid = nodeUuid(ui);
+      const activeCredentialKey = "m3td-mobile-desktop-token:" + currentNodeUuid;
+      // Validate every saved token against the server before adopting it;
+      // never trust the key name alone and never delete original credentials.
       const candidates = [];
       try {
-        const primary = localStorage.getItem(credentialKey) || token;
+        const primary = localStorage.getItem(activeCredentialKey) || token;
         if (primary) candidates.push(primary);
         for (const key of Object.keys(localStorage)) {
-          if (!key.startsWith("m3td-mobile-desktop-token:") || key === credentialKey) continue;
+          if (!key.startsWith("m3td-mobile-desktop-token:") || key === activeCredentialKey) continue;
           const value = localStorage.getItem(key);
           if (value && !candidates.includes(value)) candidates.push(value);
         }
@@ -445,7 +448,7 @@ export function attachMobilePairing(ui) {
         );
       }
       token = savedToken;
-      try { localStorage.setItem(credentialKey, savedToken); } catch (_) {}
+      try { localStorage.setItem(activeCredentialKey, savedToken); } catch (_) {}
 
       const remoteRevision = Number(payload.revision) || 0;
       const remoteJson = JSON.stringify(payload.state);
