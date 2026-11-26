@@ -371,25 +371,32 @@ export function attachMobilePairing(ui) {
   });
 
   const normalizeMobileState = value => value;
-  ui.root.addEventListener("DOMNodeRemoved", event => {
-    if (event.target === ui.root) {
-      clearTimeout(pendingTimer);
-      pendingTimer = 0;
-      localQueued = false;
-      connectionGeneration += 1;
-      clearTimeout(reconnectTimer);
-      reconnectTimer = 0;
-      const activeToken = token;
-      token = "";
-      const previousSocket = socket;
-      socket = null;
-      previousSocket?.close();
-      if (activeToken) {
-        fetch(API_ROOT + "/session/revoke", {
-          method: "POST",
-          headers: { Authorization: "Bearer " + activeToken },
-        }).catch(() => {});
-      }
+  let pairingDisposed = false;
+  const cleanupPairing = () => {
+    if (pairingDisposed) return;
+    pairingDisposed = true;
+    ui.root.removeEventListener("DOMNodeRemoved", handleRootRemoved);
+    clearTimeout(pendingTimer);
+    pendingTimer = 0;
+    localQueued = false;
+    connectionGeneration += 1;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = 0;
+    const activeToken = token;
+    token = "";
+    const previousSocket = socket;
+    socket = null;
+    previousSocket?.close();
+    if (activeToken) {
+      fetch(API_ROOT + "/session/revoke", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + activeToken },
+      }).catch(() => {});
     }
-  }, { once: true });
+  };
+  const handleRootRemoved = event => {
+    if (event.target === ui.root) cleanupPairing();
+  };
+  ui.root.addEventListener("DOMNodeRemoved", handleRootRemoved, { once: true });
+  return cleanupPairing;
 }
