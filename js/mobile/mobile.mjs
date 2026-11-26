@@ -361,6 +361,12 @@ function renderPanel() {
     ? editorContent.querySelector(".mobile-segment-picker")
     : null;
   const previousSegmentScrollLeft = previousSegmentPicker?.scrollLeft ?? 0;
+  const previousSelectedChip = previousSegmentPicker?.querySelector(
+    '[data-select-mobile-segment="' + activeSegment + '"]'
+  );
+  const previousSelectedChipLeft = previousSelectedChip && previousSegmentPicker
+    ? previousSelectedChip.getBoundingClientRect().left - previousSegmentPicker.getBoundingClientRect().left
+    : null;
   document.querySelectorAll(".bottom-nav [data-panel]").forEach(button => button.classList.toggle("active", button.dataset.panel === activePanel));
   const titles = { segments:"分段编辑", assets:"素材管理", groups:"分组管理", settings:"连接设置" };
   editorHeading.textContent = titles[activePanel] || "移动导演台";
@@ -370,7 +376,21 @@ function renderPanel() {
   else renderSettingsPanel();
   if (activePanel === "segments") {
     const nextSegmentPicker = editorContent.querySelector(".mobile-segment-picker");
-    if (nextSegmentPicker) nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
+    if (nextSegmentPicker) {
+      // Restore after layout: assigning scrollLeft before the new chips are
+      // laid out can be clamped to zero on mobile browsers.
+      requestAnimationFrame(() => {
+        if (!nextSegmentPicker.isConnected) return;
+        nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
+        const nextSelectedChip = nextSegmentPicker.querySelector(
+          '[data-select-mobile-segment="' + activeSegment + '"]'
+        );
+        if (nextSelectedChip && previousSelectedChipLeft !== null) {
+          const nextLeft = nextSelectedChip.getBoundingClientRect().left - nextSegmentPicker.getBoundingClientRect().left;
+          nextSegmentPicker.scrollLeft += nextLeft - previousSelectedChipLeft;
+        }
+      });
+    }
   }
 }
 
