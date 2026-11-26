@@ -72,9 +72,10 @@ export function attachMobilePairing(ui) {
   if (!head) return;
 
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
-  const isMobileDevice = typeof navigator.userAgentData?.mobile === "boolean"
-    ? navigator.userAgentData.mobile
-    : /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const isMobileDevice = (
+    typeof navigator.userAgentData?.mobile === "boolean" && navigator.userAgentData.mobile
+  ) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+    || navigator.maxTouchPoints > 0;
 
   const button = document.createElement("button");
   button.type = "button";
