@@ -17,6 +17,8 @@ const saveWorkflowButton = document.querySelector("#mobile-save-workflow-button"
 const runStatus = document.querySelector("#mobile-run-status");
 const runDetail = document.querySelector("#mobile-run-detail");
 const runProgressBar = document.querySelector("#mobile-run-progress-bar");
+const runSegmentLabel = document.querySelector("#mobile-run-segment");
+const runProgressLabel = document.querySelector("#mobile-run-progress-label");
 const gettingStarted = document.querySelector("#getting-started");
 const footerNote = document.querySelector("#mobile-footer-note");
 const API_ROOT = "/minimax_h3_timeline/mobile";
@@ -32,6 +34,7 @@ let reconnectTimer = 0;
 let reconnectDelay = 1000;
 let activePanel = "segments";
 let activeSegment = 0;
+let executingSegmentIndex = null;
 let selectedVideoId = "";
 let mobilePlayhead = 0;
 let mobileTimelineScale = 44;
@@ -67,6 +70,7 @@ function setRunStatus(status, detail = "", percent = null) {
   if (runStatus) runStatus.textContent = status;
   if (runDetail) runDetail.textContent = detail;
   if (runProgressBar) runProgressBar.style.width = percent == null ? "0%" : Math.max(0, Math.min(100, percent)) + "%";
+  if (runProgressLabel) runProgressLabel.textContent = percent == null ? "当前采样进度" : "当前采样进度 · " + Math.round(Math.max(0, Math.min(100, percent))) + "%";
   if (runButton) runButton.disabled = workflowBusy || !!pendingCommandId || !sessionToken || conflict;
   if (stopButton) stopButton.disabled = !activePromptId || !sessionToken;
   if (saveWorkflowButton) saveWorkflowButton.disabled = !!pendingCommandId || !sessionToken || conflict;
@@ -158,23 +162,38 @@ function receiveExecutionStatus(message) {
     executionTerminal = false;
     workflowBusy = true;
     const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
-    setRunStatus("执行中", message.node ? "当前节点：" + message.node : "ComfyUI 正在执行工作流…", percent);
+    const nodeName = String(message.node || "");
+    const segmentMatch = nodeName.match(/\.sample_(\d+)\b/i);
+    if (segmentMatch) {
+      const parsedIndex = Number(segmentMatch[1]) - 1;
+      const total = segments().length;
+      if (Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < total) executingSegmentIndex = parsedIndex;
+    }
+    if (runSegmentLabel) {
+      runSegmentLabel.textContent = executingSegmentIndex == null
+        ? "当前分段：识别中"
+        : "当前分段：第 " + (executingSegmentIndex + 1) + " / " + segments().length + " 段";
+    }
+    setRunStatus("执行中", nodeName ? "当前节点：" + nodeName : "ComfyUI 正在执行工作流…", percent);
   } else if (message.status === "finishing") {
     setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
   } else if (message.status === "completed") {
     activePromptId = "";
     workflowBusy = false;
     executionTerminal = true;
+    if (runSegmentLabel) runSegmentLabel.textContent = "本次工作流已完成";
     setRunStatus("已完成", "工作流执行成功。", 100);
   } else if (message.status === "failed") {
     activePromptId = "";
     workflowBusy = false;
     executionTerminal = true;
+    if (runSegmentLabel) runSegmentLabel.textContent = "本次工作流执行失败";
     setRunStatus("执行失败", message.message || "请在电脑端查看 ComfyUI 错误详情。");
   } else if (message.status === "interrupted") {
     activePromptId = "";
     workflowBusy = false;
     executionTerminal = true;
+    if (runSegmentLabel) runSegmentLabel.textContent = "本次工作流已停止";
     setRunStatus("已停止", "当前工作流已中断。");
   }
 }
@@ -564,10 +583,17 @@ function renderPanel() {
   });
 }
 
+function incomingOverlapFrames(index) {
+  const list = segments();
+  if (index <= 0 || !list[index] || !list[index - 1]) return 0;
+  const overlap = Number(list[index - 1].endFrame) - Number(list[index].startFrame);
+  return Number.isFinite(overlap) ? Math.max(0, Math.round(overlap)) : 0;
+}
+
 function renderSegmentPicker() {
   return `<div class="mobile-segment-picker">${segments().map((segment,index)=>`
     <button type="button" class="mobile-segment-chip ${index===activeSegment?"active":""} ${segment.enabled===false?"disabled":""}" data-select-mobile-segment="${index}">
-      <strong>${escapeHTML(segmentLabel(segment,index))}</strong><small>${segment.enabled===false?"已禁用":((segment.endFrame-segment.startFrame)/24).toFixed(2)+" 秒"}</small>
+      <strong>${escapeHTML(segmentLabel(segment,index))}</strong><small>${segment.enabled===false?"已禁用":((segment.endFrame-segment.startFrame)/24).toFixed(2)+" 秒 · 重叠 "+incomingOverlapFrames(index)+" 帧"}</small>
     </button>`).join("")}</div>`;
 }
 
@@ -591,7 +617,7 @@ function renderSegmentsPanel() {
       <p class="mobile-hint">分段数量和重叠计算复用电脑端的 H3 帧对齐规则。</p>
     </section>
     <section class="mobile-card">
-      <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段</span></div>
+      <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段 · 重叠 ${incomingOverlapFrames(activeSegment)} 帧</span></div>
       <label class="mobile-field">分段名称<input id="segment-name" maxlength="40" value="${escapeHTML(segment.name||"第 "+(activeSegment+1)+" 段")}"></label>
       <div class="mobile-field-row">
         <label class="mobile-field">起始时间（秒）<input id="segment-start" type="number" min="0" step="0.04" value="${(segment.startFrame/24).toFixed(2)}"></label>
