@@ -1666,8 +1666,10 @@ class MiniMaxH3TimelinePlanner(io.ComfyNode):
     @classmethod
     def execute(
         cls, width, height, generation_seconds, timeline_data="", import_preset=None,
-        prompt_index=None, unique_id=None,
+        prompt_index=None,
     ) -> io.NodeOutput:
+        # V3 hidden inputs are exposed through cls.hidden, not execute parameters.
+        unique_id = getattr(getattr(cls, "hidden", None), "unique_id", None)
         source_timeline_data = timeline_data
         source_width, source_height = width, height
         source_seconds = generation_seconds
