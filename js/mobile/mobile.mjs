@@ -128,6 +128,12 @@ function setConnected(connected, detail = "") {
   if (connectionState) connectionState.textContent = connected ? "已连接" : "未连接";
   document.body.classList.toggle("is-connected", connected);
   if (editor) editor.hidden = !connected;
+  if (!connected) {
+    activePromptId = "";
+    workflowBusy = false;
+  }
+  if (runButton) runButton.disabled = !connected || workflowBusy || conflict;
+  if (stopButton) stopButton.disabled = !connected || !activePromptId;
   if (gettingStarted) gettingStarted.hidden = connected;
   if (footerNote) footerNote.hidden = connected;
   document.querySelector(".bottom-nav")?.classList.toggle("is-visible", connected);
