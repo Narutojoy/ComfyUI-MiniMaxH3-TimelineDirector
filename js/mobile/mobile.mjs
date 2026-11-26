@@ -183,8 +183,9 @@ function setConnected(connected, detail = "") {
     activePromptId = "";
     workflowBusy = false;
   }
-  if (runButton) runButton.disabled = !connected || workflowBusy || conflict;
+  if (runButton) runButton.disabled = !connected || workflowBusy || !!pendingCommandId || conflict;
   if (stopButton) stopButton.disabled = !connected || !activePromptId;
+  if (saveWorkflowButton) saveWorkflowButton.disabled = !connected || !!pendingCommandId || conflict;
   if (gettingStarted) gettingStarted.hidden = connected;
   if (footerNote) footerNote.hidden = connected;
   document.querySelector(".bottom-nav")?.classList.toggle("is-visible", connected);
