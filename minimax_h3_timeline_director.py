@@ -1684,8 +1684,16 @@ class MiniMaxH3TimelinePlanner(io.ComfyNode):
         complete_plan = _create_timeline_plan(
             source_timeline_data, source_width, source_height, source_seconds, None
         )
+        log.warning(
+            "[MiniMaxH3 Timeline Progress DIAG] Planner unique_id=%r type=%s",
+            unique_id, type(unique_id).__name__,
+        )
         if unique_id is not None:
             complete_plan["director_node_id"] = str(unique_id)
+        log.warning(
+            "[MiniMaxH3 Timeline Progress DIAG] Planner complete_plan director_node_id=%r",
+            complete_plan.get("director_node_id"),
+        )
         if import_preset is not None and unique_id is not None:
             sender = getattr(PromptServer.instance, "send_sync", None)
             if callable(sender):
