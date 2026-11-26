@@ -291,6 +291,23 @@ export function attachMobilePairing(ui) {
     },
   };
   for (const [name, listener] of Object.entries(executionListeners)) api.addEventListener(name, listener);
+  // Forward the planner's authoritative segment progress to the paired phone.
+  // The event carries the original timeline index, not a ComfyUI graph node name.
+  api.addEventListener("minimax_h3_timeline_segment_progress", event => {
+    const payload = event.detail || {};
+    if (String(payload.node_id || "") !== String(ui.node?.id ?? "")) return;
+    const segmentIndex = Number(payload.segment_index);
+    const segmentCount = Number(payload.segment_count);
+    if (!Number.isInteger(segmentIndex) || segmentIndex < 0) return;
+    sendMobileEvent({
+      type: "execution_status",
+      status: String(payload.status || "running"),
+      prompt_id: activePromptId,
+      segment_index: segmentIndex,
+      segment_count: Number.isInteger(segmentCount) && segmentCount > 0 ? segmentCount : undefined,
+      message: String(payload.error || "").slice(0, 400),
+    });
+  });
   const applyRemote = payload => {
     if (!payload || !payload.state || typeof payload.state !== "object") return;
     applyingRemote = true;
