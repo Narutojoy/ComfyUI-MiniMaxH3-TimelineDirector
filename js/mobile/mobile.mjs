@@ -523,6 +523,10 @@ function renderPanel() {
   if (!currentState || !editorContent) return;
   // Re-rendering the editor replaces the segment chips. Preserve the user's
   // horizontal position so selecting a segment does not jump back to #1.
+  const previousWindowScrollX = window.scrollX;
+  const previousWindowScrollY = window.scrollY;
+  const previousPrompt = activePanel === "segments" ? editorContent.querySelector("#segment-prompt") : null;
+  const previousPromptScrollTop = previousPrompt?.scrollTop ?? 0;
   const previousSegmentPicker = activePanel === "segments"
     ? editorContent.querySelector(".mobile-segment-picker")
     : null;
@@ -540,24 +544,24 @@ function renderPanel() {
   else if (activePanel === "assets") renderAssetsPanel();
   else if (activePanel === "groups") renderGroupsPanel();
   else renderSettingsPanel();
-  if (activePanel === "segments") {
+  requestAnimationFrame(() => {
+    // Keep the document at the same vertical position when the editor is
+    // re-rendered after reordering/removing an asset.
+    window.scrollTo(previousWindowScrollX, previousWindowScrollY);
+    if (activePanel !== "segments") return;
+    const nextPrompt = editorContent.querySelector("#segment-prompt");
+    if (nextPrompt) nextPrompt.scrollTop = previousPromptScrollTop;
     const nextSegmentPicker = editorContent.querySelector(".mobile-segment-picker");
-    if (nextSegmentPicker) {
-      // Restore after layout: assigning scrollLeft before the new chips are
-      // laid out can be clamped to zero on mobile browsers.
-      requestAnimationFrame(() => {
-        if (!nextSegmentPicker.isConnected) return;
-        nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
-        const nextSelectedChip = nextSegmentPicker.querySelector(
-          '[data-select-mobile-segment="' + activeSegment + '"]'
-        );
-        if (nextSelectedChip && previousSelectedChipLeft !== null) {
-          const nextLeft = nextSelectedChip.getBoundingClientRect().left - nextSegmentPicker.getBoundingClientRect().left;
-          nextSegmentPicker.scrollLeft += nextLeft - previousSelectedChipLeft;
-        }
-      });
+    if (!nextSegmentPicker) return;
+    nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
+    const nextSelectedChip = nextSegmentPicker.querySelector(
+      '[data-select-mobile-segment="' + activeSegment + '"]'
+    );
+    if (nextSelectedChip && previousSelectedChipLeft !== null) {
+      const nextLeft = nextSelectedChip.getBoundingClientRect().left - nextSegmentPicker.getBoundingClientRect().left;
+      nextSegmentPicker.scrollLeft += nextLeft - previousSelectedChipLeft;
     }
-  }
+  });
 }
 
 function renderSegmentPicker() {
@@ -605,7 +609,7 @@ function renderSegmentsPanel() {
       <div class="mobile-card-heading"><h3>本段素材引用</h3><span>图片最多 9 个 · 音频最多 3 个</span></div>
       <p class="mobile-hint">图片：${segment.images.length} 个　音频：${segment.audios.length} 个。可在此调整本段内的引用顺序。</p>
       <div class="mobile-assigned-list"><strong>图片顺序</strong>
-        ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="images" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整图片顺序" title="按住拖动排序">⠿</button><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
+        ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="images" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整图片顺序" title="按住拖动排序">⠿</button><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button><button type="button" class="mobile-icon-button" data-remove-segment-asset="images" data-asset-id="${escapeHTML(id)}" aria-label="从本段移除这张图片" title="从本段移除">×</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
       </div>
       <div class="mobile-assigned-list"><strong>音频顺序</strong>
         ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="audios" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整音频顺序" title="按住拖动排序">⠿</button><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
@@ -671,6 +675,11 @@ function renderSegmentsPanel() {
   });
   editorContent.querySelectorAll("[data-open-assets]").forEach(button=>button.addEventListener("click",()=>{
     activePanel="assets";renderPanel();
+  }));
+  editorContent.querySelectorAll("[data-remove-segment-asset='images']").forEach(button=>button.addEventListener("click",()=>{
+    const id=button.dataset.assetId;
+    segment.images=(segment.images||[]).filter(value=>String(value)!==id);
+    scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-reorder-segment-asset]").forEach(button=>button.addEventListener("click",()=>{
     const kind=button.dataset.reorderSegmentAsset,index=Number(button.dataset.index),list=segment[kind];
