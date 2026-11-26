@@ -405,7 +405,14 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 except (ValueError, TypeError, AttributeError):
                     await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_request_id"})
                     continue
-                command = {"type": event_type, "request_id": request_id}
+                command_revision = event.get("revision")
+                if not isinstance(command_revision, int) or isinstance(command_revision, bool):
+                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_revision"})
+                    continue
+                if command_revision != session.revision:
+                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "revision_mismatch", "revision": session.revision})
+                    continue
+                command = {"type": event_type, "request_id": request_id, "revision": command_revision}
                 if event_type == "interrupt_request":
                     command["prompt_id"] = str(event.get("prompt_id") or "")[:128]
                 delivered = await _send_to_role(session, "desktop", command)
