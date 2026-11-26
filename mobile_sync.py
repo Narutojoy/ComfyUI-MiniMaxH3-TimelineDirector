@@ -42,6 +42,7 @@ class MobileSession:
     updated_at: float = field(default_factory=time.time)
     expires_at: float = field(default_factory=lambda: time.time() + SESSION_TTL_SECONDS)
     sockets: set[web.WebSocketResponse] = field(default_factory=set)
+    socket_roles: dict[web.WebSocketResponse, str] = field(default_factory=dict)
 
 
 def _json_size(value: Any) -> int:
@@ -147,6 +148,28 @@ async def _broadcast(session: MobileSession, message: dict[str, Any]) -> None:
             stale.append(socket)
     for socket in stale:
         session.sockets.discard(socket)
+        session.socket_roles.pop(socket, None)
+
+
+async def _send_to_role(session: MobileSession, role: str, message: dict[str, Any]) -> int:
+    payload = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+    delivered = 0
+    stale = []
+    for peer, peer_role in tuple(session.socket_roles.items()):
+        if peer_role != role:
+            continue
+        if peer.closed:
+            stale.append(peer)
+            continue
+        try:
+            await peer.send_str(payload)
+            delivered += 1
+        except Exception:
+            stale.append(peer)
+    for peer in stale:
+        session.sockets.discard(peer)
+        session.socket_roles.pop(peer, None)
+    return delivered
 
 
 @PromptServer.instance.routes.post("/minimax_h3_timeline/mobile/pair/create")
@@ -338,13 +361,15 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         digest = hashlib.sha256(token.encode("utf-8")).hexdigest() if token else ""
         async with _lock:
             _purge_expired()
-            session = next((
-                item for item in _sessions.values()
+            match = next((
+                (item, "desktop" if secrets.compare_digest(item.token_hash, digest) else "mobile")
+                for item in _sessions.values()
                 if token and (
                     secrets.compare_digest(item.token_hash, digest)
                     or (item.mobile_token_hash and secrets.compare_digest(item.mobile_token_hash, digest))
                 )
             ), None)
+            session, socket_role = match if match else (None, "")
         if session is None:
             await socket.close(code=4003, message=b"Invalid session")
             return socket
@@ -353,6 +378,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 session = None
             else:
                 session.sockets.add(socket)
+                session.socket_roles[socket] = socket_role
         if session is None:
             await socket.close(code=4003, message=b"Session revoked")
             return socket
@@ -360,13 +386,44 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         async for message in socket:
             if message.type == WSMsgType.ERROR:
                 break
-            if message.type == WSMsgType.TEXT:
-                # State writes use the revision-checked HTTP endpoint; WS is
-                # intentionally event-only in this first protocol version.
-                await socket.send_json({"type": "notice", "message": "Use the state endpoint to save edits"})
+            if message.type != WSMsgType.TEXT:
+                continue
+            try:
+                event = json.loads(message.data)
+            except Exception:
+                continue
+            if not isinstance(event, dict):
+                continue
+            event_type = str(event.get("type") or "")
+            if socket_role == "mobile":
+                if event_type not in {"run_request", "interrupt_request"}:
+                    await socket.send_json({"type": "command_result", "request_id": event.get("request_id"), "ok": False, "error": "unsupported_command"})
+                    continue
+                request_id = str(event.get("request_id") or "")
+                try:
+                    uuid.UUID(request_id)
+                except (ValueError, TypeError, AttributeError):
+                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_request_id"})
+                    continue
+                command = {"type": event_type, "request_id": request_id}
+                if event_type == "interrupt_request":
+                    command["prompt_id"] = str(event.get("prompt_id") or "")[:128]
+                delivered = await _send_to_role(session, "desktop", command)
+                if not delivered:
+                    await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "desktop_offline"})
+            elif socket_role == "desktop":
+                if event_type in {"command_result", "execution_status"}:
+                    safe_event = {"type": event_type}
+                    for key in ("request_id", "ok", "error", "status", "prompt_id", "node", "value", "max", "message", "percent"):
+                        if key in event:
+                            value = event[key]
+                            if isinstance(value, (str, int, float, bool)) or value is None:
+                                safe_event[key] = value if not isinstance(value, str) else value[:512]
+                    await _send_to_role(session, "mobile", safe_event)
     except asyncio.TimeoutError:
         await socket.close(code=4001, message=b"Authentication timeout")
     finally:
         if "session" in locals() and session:
             session.sockets.discard(socket)
+            session.socket_roles.pop(socket, None)
     return socket
