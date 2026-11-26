@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#111318">
   <title>MiniMax H3 移动导演台</title>
-  <link rel="stylesheet" href="./mobile.css?v=20261126-11">
+  <link rel="stylesheet" href="./mobile.css?v=20261126-12">
 </head>
 <body>
   <div class="app-shell">
@@ -57,6 +57,7 @@
             <button type="button" class="mobile-danger full-width" id="mobile-stop-button" disabled>■ 停止运行</button>
           </div>
           <button type="button" class="mobile-secondary full-width" id="mobile-save-workflow-button" disabled>保存工作流</button>
+          <div class="mobile-run-meta"><span id="mobile-run-segment">当前分段：等待执行</span><span id="mobile-run-progress-label">当前采样进度</span></div>
           <div class="mobile-run-progress"><div id="mobile-run-progress-bar"></div></div>
           <p class="mobile-hint" id="mobile-run-detail" role="status" aria-live="polite">运行前会先确认手机端修改已同步到电脑。</p>
         </section>
@@ -88,6 +89,6 @@
       <button class="primary-button full-button" id="confirm-dialog" type="button">知道了</button>
     </section>
   </div>
-  <script type="module" src="./mobile.mjs?v=20261126-11"></script>
+  <script type="module" src="./mobile.mjs?v=20261126-12"></script>
 </body>
 </html>
