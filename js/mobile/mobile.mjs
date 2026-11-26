@@ -11,6 +11,11 @@ const editor = document.querySelector("#mobile-editor");
 const editorContent = document.querySelector("#editor-content");
 const editorHeading = document.querySelector("#editor-heading");
 const editorSyncStatus = document.querySelector("#editor-sync-status");
+const runButton = document.querySelector("#mobile-run-button");
+const stopButton = document.querySelector("#mobile-stop-button");
+const runStatus = document.querySelector("#mobile-run-status");
+const runDetail = document.querySelector("#mobile-run-detail");
+const runProgressBar = document.querySelector("#mobile-run-progress-bar");
 const gettingStarted = document.querySelector("#getting-started");
 const footerNote = document.querySelector("#mobile-footer-note");
 const API_ROOT = "/minimax_h3_timeline/mobile";
@@ -38,6 +43,9 @@ let dirty = false;
 let conflict = false;
 let nodeUuid = "";
 let referenceSize = { width: 832, height: 480 };
+let activePromptId = "";
+let pendingCommandId = "";
+let workflowBusy = false;
 
 const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -51,6 +59,60 @@ const videos = () => currentState?.videoClips || [];
 const mediaURL = file => { const parts=String(file||"").replace(/\\/g,"/").split("/"); const filename=parts.pop(); const params=new URLSearchParams({filename,type:"input"}); if(parts.length)params.set("subfolder",parts.join("/")); return "/view?"+params.toString(); };
 const segmentLabel = (segment,index) => segment?.name || "第 " + (index+1) + " 段";
 const setSyncStatus = text => { if(editorSyncStatus) editorSyncStatus.textContent = text; };
+
+function setRunStatus(status, detail = "", percent = null) {
+  if (runStatus) runStatus.textContent = status;
+  if (runDetail) runDetail.textContent = detail;
+  if (runProgressBar) runProgressBar.style.width = percent == null ? "0%" : Math.max(0, Math.min(100, percent)) + "%";
+  if (runButton) runButton.disabled = workflowBusy || !sessionToken || conflict;
+  if (stopButton) stopButton.disabled = !activePromptId || !sessionToken;
+}
+
+async function flushStateBeforeCommand() {
+  if (conflict) throw new Error("同步存在冲突，请先解决冲突");
+  clearTimeout(saveTimer);
+  if (dirty && !saveInFlight) await saveState();
+  const deadline = Date.now() + 10000;
+  while ((dirty || saveInFlight) && Date.now() < deadline) {
+    if (conflict) throw new Error("同步存在冲突，请先解决冲突");
+    if (dirty && !saveInFlight) await saveState();
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  if (dirty || saveInFlight || conflict) throw new Error("修改尚未同步完成，请稍后重试");
+}
+
+function sendRunCommand(type, extra = {}) {
+  if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error("手机与电脑的实时连接尚未建立");
+  const requestId = globalThis.crypto?.randomUUID?.();
+  if (!requestId) throw new Error("当前浏览器不支持安全请求编号");
+  pendingCommandId = requestId;
+  socket.send(JSON.stringify({ type, request_id: requestId, revision, ...extra }));
+  return requestId;
+}
+
+async function requestWorkflowRun() {
+  if (workflowBusy || !sessionToken) return;
+  workflowBusy = true;
+  setRunStatus("正在同步", "正在确认手机端最新修改已保存…");
+  try {
+    await flushStateBeforeCommand();
+    sendRunCommand("run_request");
+    setRunStatus("请求已发送", "电脑端正在接收运行请求…");
+  } catch (error) {
+    workflowBusy = false;
+    setRunStatus("无法运行", error.message);
+  }
+}
+
+function requestWorkflowStop() {
+  if (!activePromptId || !sessionToken) return;
+  try {
+    sendRunCommand("interrupt_request", { prompt_id: activePromptId });
+    setRunStatus("正在停止", "已向电脑端发送停止请求…");
+  } catch (error) {
+    setRunStatus("停止失败", error.message);
+  }
+}
 
 function feedback(message, state = "") {
   if (!pairFeedback) return;
@@ -230,6 +292,51 @@ function connectEvents(token) {
       receiveRemote(message);
     } else if (message.type === "paired") {
       feedback("配对成功，正在建立实时同步。", "success");
+    } else if (message.type === "command_result") {
+      if (message.request_id && message.request_id !== pendingCommandId) return;
+      pendingCommandId = "";
+      if (message.ok) {
+        if (message.status === "queued") {
+          workflowBusy = true;
+          setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
+        } else if (message.status === "interrupt_requested") {
+          setRunStatus("停止请求已发送", "ComfyUI 正在处理中断请求…");
+        }
+      } else {
+        workflowBusy = false;
+        const errors = {
+          desktop_offline: "电脑端导演台没有在线连接",
+          revision_mismatch: "手机与电脑版本不一致，请等待同步后重试",
+          desktop_state_not_synced: "电脑端尚未应用手机端最新修改",
+          workflow_busy: "工作流正在运行或提交中",
+          queue_rejected: "ComfyUI 没有接受运行请求",
+          queue_failed: "提交工作流时发生错误",
+          no_matching_active_prompt: "没有找到可停止的当前任务",
+          interrupt_failed: "停止请求失败",
+        };
+        setRunStatus("操作未完成", errors[message.error] || message.message || message.error || "未知错误");
+      }
+    } else if (message.type === "execution_status") {
+      if (message.prompt_id) activePromptId = message.prompt_id;
+      if (message.status === "running") {
+        workflowBusy = true;
+        const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
+        setRunStatus("执行中", message.node ? "当前节点：" + message.node : "ComfyUI 正在执行工作流…", percent);
+      } else if (message.status === "finishing") {
+        setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
+      } else if (message.status === "completed") {
+        activePromptId = "";
+        workflowBusy = false;
+        setRunStatus("已完成", "工作流执行成功。", 100);
+      } else if (message.status === "failed") {
+        activePromptId = "";
+        workflowBusy = false;
+        setRunStatus("执行失败", message.message || "请在电脑端查看 ComfyUI 错误详情。");
+      } else if (message.status === "interrupted") {
+        activePromptId = "";
+        workflowBusy = false;
+        setRunStatus("已停止", "当前工作流已中断。");
+      }
     }
   });
   activeSocket.addEventListener("close", event => {
@@ -963,6 +1070,8 @@ document.querySelector("#confirm-dialog")?.addEventListener("click",()=>{helpDia
 document.querySelector("#refresh-page")?.addEventListener("click",()=>window.location.reload());
 document.querySelector("#desktop-mode")?.addEventListener("click",()=>{window.location.href="/";});
 pairButton?.addEventListener("click",claimPairingCode);
+runButton?.addEventListener("click", requestWorkflowRun);
+stopButton?.addEventListener("click", requestWorkflowStop);
 pairInput?.addEventListener("keydown",event=>{if(event.key==="Enter")claimPairingCode();});
 pairInput?.addEventListener("input",()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);});
 document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.addEventListener("click",()=>{
