@@ -19,6 +19,33 @@ const runDetail = document.querySelector("#mobile-run-detail");
 const runProgressBar = document.querySelector("#mobile-run-progress-bar");
 const runSegmentLabel = document.querySelector("#mobile-run-segment");
 const runProgressLabel = document.querySelector("#mobile-run-progress-label");
+
+const queueCount = document.querySelector("#mobile-queue-count");
+const queueList = document.querySelector("#mobile-queue-list");
+let latestQueue = { queue_running: [], queue_pending: [] };
+
+function renderQueue(snapshot = latestQueue) {
+  latestQueue = snapshot && typeof snapshot === "object" ? snapshot : { queue_running: [], queue_pending: [] };
+  const running = Array.isArray(latestQueue.queue_running) ? latestQueue.queue_running : [];
+  const pending = Array.isArray(latestQueue.queue_pending) ? latestQueue.queue_pending : [];
+  if (queueCount) queueCount.textContent = String(running.length + pending.length);
+  if (!queueList) return;
+  const rows = [
+    ...running.map(item => ({ ...item, state: "正在执行" })),
+    ...pending.map(item => ({ ...item, state: "等待执行" }))
+  ];
+  if (!rows.length) {
+    queueList.innerHTML = '<p class="mobile-queue-empty">当前没有排队任务</p>';
+    return;
+  }
+  queueList.innerHTML = rows.map(item => {
+    const label = escapeHTML(item.label || "工作流任务");
+    const id = escapeHTML(String(item.prompt_id || "").slice(0, 8));
+    const meta = id ? "任务编号 " + id : "ComfyUI 队列任务";
+    return '<div class="mobile-queue-item"><div class="mobile-queue-item-main"><strong>' + label + '</strong><small>' + meta + '</small></div><span class="mobile-queue-state ' + (item.state === "正在执行" ? "is-running" : "") + '">' + item.state + '</span></div>';
+  }).join("");
+}
+
 const gettingStarted = document.querySelector("#getting-started");
 const footerNote = document.querySelector("#mobile-footer-note");
 const API_ROOT = "/minimax_h3_timeline/mobile";
@@ -71,7 +98,7 @@ function setRunStatus(status, detail = "", percent = null) {
   if (runDetail) runDetail.textContent = detail;
   if (runProgressBar) runProgressBar.style.width = percent == null ? "0%" : Math.max(0, Math.min(100, percent)) + "%";
   if (runProgressLabel) runProgressLabel.textContent = percent == null ? "当前采样进度" : "当前采样进度 · " + Math.round(Math.max(0, Math.min(100, percent))) + "%";
-  if (runButton) runButton.disabled = workflowBusy || !!pendingCommandId || !sessionToken || conflict;
+  if (runButton) runButton.disabled = !!pendingCommandId || !sessionToken || conflict;
   if (stopButton) stopButton.disabled = !activePromptId || !sessionToken;
   if (saveWorkflowButton) saveWorkflowButton.disabled = !!pendingCommandId || !sessionToken || conflict;
 }
@@ -126,7 +153,7 @@ async function requestWorkflowSave() {
 }
 
 async function requestWorkflowRun() {
-  if (workflowBusy || !sessionToken) return;
+  if (!sessionToken || pendingCommandId) return;
   workflowBusy = true;
   executionTerminal = false;
   setRunStatus("正在同步", "正在确认手机端最新修改已保存…");
@@ -174,7 +201,7 @@ function receiveExecutionStatus(message) {
         ? "当前分段：识别中"
         : "当前分段：第 " + (executingSegmentIndex + 1) + " / " + segments().length + " 段";
     }
-    setRunStatus("执行中", nodeName ? "当前节点：" + nodeName : "ComfyUI 正在执行工作流…", percent);
+    setRunStatus("执行中", segmentMatch ? "正在生成本段视频…" : "ComfyUI 正在执行工作流…", percent);
   } else if (message.status === "finishing") {
     setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
   } else if (message.status === "completed") {
@@ -216,7 +243,7 @@ function setConnected(connected, detail = "") {
     activePromptId = "";
     workflowBusy = false;
   }
-  if (runButton) runButton.disabled = !connected || workflowBusy || !!pendingCommandId || conflict;
+  if (runButton) runButton.disabled = !connected || !!pendingCommandId || conflict;
   if (stopButton) stopButton.disabled = !connected || !activePromptId;
   if (saveWorkflowButton) saveWorkflowButton.disabled = !connected || !!pendingCommandId || conflict;
   if (gettingStarted) gettingStarted.hidden = connected;
@@ -343,6 +370,7 @@ function connectEvents(token) {
     let message;
     try { message = JSON.parse(event.data); } catch { return; }
     if (message.type === "ready") {
+      if (message.queue_status) renderQueue(message.queue_status);
       const remoteRevision = Number(message.revision) || 0;
       if (dirty || saveInFlight) {
         if (remoteRevision > revision && JSON.stringify(message.state) === JSON.stringify(currentState)) {
@@ -413,6 +441,8 @@ function connectEvents(token) {
         };
         setRunStatus("操作未完成", errors[message.error] || message.message || message.error || "未知错误");
       }
+    } else if (message.type === "queue_status") {
+      renderQueue(message);
     } else if (message.type === "execution_status") {
       receiveExecutionStatus(message);
     }
