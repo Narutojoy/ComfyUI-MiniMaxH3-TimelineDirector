@@ -70,6 +70,7 @@ let reconnectTimer = 0;
 let reconnectDelay = 1000;
 let activePanel = "segments";
 let activeSegment = 0;
+let rememberedSegmentPromptScrollTop = 0;
 let executingSegmentIndex = null;
 let selectedVideoId = "";
 let mobilePlayhead = 0;
@@ -622,8 +623,8 @@ function renderPanel() {
   // horizontal position so selecting a segment does not jump back to #1.
   const previousWindowScrollX = window.scrollX;
   const previousWindowScrollY = window.scrollY;
-  const previousPrompt = activePanel === "segments" ? editorContent.querySelector("#segment-prompt") : null;
-  const previousPromptScrollTop = previousPrompt?.scrollTop ?? 0;
+  const previousPrompt = editorContent.querySelector("#segment-prompt");
+  if (activePanel === "segments" && previousPrompt) rememberedSegmentPromptScrollTop = previousPrompt.scrollTop;
   const previousSegmentPicker = activePanel === "segments"
     ? editorContent.querySelector(".mobile-segment-picker")
     : null;
@@ -647,7 +648,7 @@ function renderPanel() {
     window.scrollTo(previousWindowScrollX, previousWindowScrollY);
     if (activePanel !== "segments") return;
     const nextPrompt = editorContent.querySelector("#segment-prompt");
-    if (nextPrompt) nextPrompt.scrollTop = previousPromptScrollTop;
+    if (nextPrompt) nextPrompt.scrollTop = rememberedSegmentPromptScrollTop;
     const nextSegmentPicker = editorContent.querySelector(".mobile-segment-picker");
     if (!nextSegmentPicker) return;
     nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
@@ -716,7 +717,7 @@ function renderSegmentsPanel() {
         ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="images" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整图片顺序" title="按住拖动排序">⠿</button><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button><button type="button" class="mobile-icon-button" data-remove-segment-asset="images" data-asset-id="${escapeHTML(id)}" aria-label="从本段移除这张图片" title="从本段移除">×</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
       </div>
       <div class="mobile-assigned-list"><strong>音频顺序</strong>
-        ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="audios" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整音频顺序" title="按住拖动排序">⠿</button><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
+        ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="audios" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整音频顺序" title="按住拖动排序">⠿</button><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button><button type="button" class="mobile-icon-button" data-remove-segment-asset="audios" data-asset-id="${escapeHTML(id)}" aria-label="从本段移除这个音频" title="从本段移除">×</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
       </div>
       <button type="button" class="mobile-secondary full-width" data-open-assets>管理本段素材</button>
     </section>
@@ -778,11 +779,15 @@ function renderSegmentsPanel() {
     currentState.globalPrompt=event.target.value;scheduleSave();
   });
   editorContent.querySelectorAll("[data-open-assets]").forEach(button=>button.addEventListener("click",()=>{
+    const prompt=editorContent.querySelector("#segment-prompt");
+    if(prompt)rememberedSegmentPromptScrollTop=prompt.scrollTop;
     activePanel="assets";renderPanel();
   }));
-  editorContent.querySelectorAll("[data-remove-segment-asset='images']").forEach(button=>button.addEventListener("click",()=>{
+  editorContent.querySelectorAll("[data-remove-segment-asset]").forEach(button=>button.addEventListener("click",()=>{
+    const kind=button.dataset.removeSegmentAsset;
     const id=button.dataset.assetId;
-    segment.images=(segment.images||[]).filter(value=>String(value)!==id);
+    if(!["images","audios"].includes(kind))return;
+    segment[kind]=(segment[kind]||[]).filter(value=>String(value)!==id);
     scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-reorder-segment-asset]").forEach(button=>button.addEventListener("click",()=>{
@@ -1304,6 +1309,8 @@ saveWorkflowButton?.addEventListener("click", requestWorkflowSave);
 pairInput?.addEventListener("keydown",event=>{if(event.key==="Enter")claimPairingCode();});
 pairInput?.addEventListener("input",()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);});
 document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.addEventListener("click",()=>{
+  const prompt=editorContent?.querySelector("#segment-prompt");
+  if(activePanel==="segments"&&prompt)rememberedSegmentPromptScrollTop=prompt.scrollTop;
   activePanel=button.dataset.panel;renderPanel();
 }));
 helpDialog?.addEventListener("click",event=>{if(event.target===helpDialog)helpDialog.hidden=true;});
