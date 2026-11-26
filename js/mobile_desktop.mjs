@@ -178,6 +178,21 @@ export function attachMobilePairing(ui) {
     if (handledCommands.size > 100) handledCommands.delete(handledCommands.values().next().value);
     const reply = (ok, error = "", extra = {}) =>
       sendMobileEvent({ type: "command_result", request_id: requestId, ok, error, ...extra });
+    if (message.type === "save_request") {
+      if (Number(message.revision) !== revision || conflict || localDirty || pendingTimer || pushInFlight) {
+        reply(false, "desktop_state_not_synced");
+        return;
+      }
+      try {
+        const executeCommand = app.extensionManager?.command?.execute;
+        if (typeof executeCommand !== "function") throw new Error("ComfyUI 保存命令接口不可用");
+        await executeCommand("Comfy.SaveWorkflow");
+        reply(true, "", { status: "saved" });
+      } catch (error) {
+        reply(false, "save_failed", { message: String(error?.message || error).slice(0, 400) });
+      }
+      return;
+    }
     if (message.type === "run_request") {
       if (Number(message.revision) !== revision || conflict || localDirty || pendingTimer || pushInFlight) {
         reply(false, "desktop_state_not_synced");
