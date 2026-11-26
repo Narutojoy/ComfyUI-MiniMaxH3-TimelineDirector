@@ -682,7 +682,6 @@ function renderSegmentsPanel() {
   const groupOptions = ['<option value="">未分组</option>', ...groups().map(group=>`<option value="${escapeHTML(group.id)}" ${segment.groupId===group.id?"selected":""}>${escapeHTML(group.name)}</option>`)].join("");
   const duration = Math.max(5/24, (segment.endFrame-segment.startFrame)/24);
   editorContent.innerHTML = `
-    ${renderSegmentPicker()}
     <section class="mobile-card">
       <div class="mobile-card-heading"><h3>分段数量与重叠</h3><span>最多 64 段</span></div>
       <div class="mobile-field-row">
@@ -695,6 +694,7 @@ function renderSegmentsPanel() {
       </div>
       <p class="mobile-hint">分段数量和重叠计算复用电脑端的 H3 帧对齐规则。</p>
     </section>
+    ${renderSegmentPicker()}
     <section class="mobile-card">
       <div class="mobile-card-heading"><h3>分段属性</h3><span>第 ${activeSegment+1} / ${segments().length} 段 · 重叠 ${incomingOverlapFrames(activeSegment)} 帧</span></div>
       <label class="mobile-field">分段名称<input id="segment-name" maxlength="40" value="${escapeHTML(segment.name||"第 "+(activeSegment+1)+" 段")}"></label>
