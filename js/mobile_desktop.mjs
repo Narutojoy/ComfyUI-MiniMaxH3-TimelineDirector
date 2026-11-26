@@ -326,6 +326,8 @@ export function attachMobilePairing(ui) {
         activeSocket.addEventListener("close", event => {
           if (socket !== activeSocket) return;
           if (event.code === 4002 || event.code === 4003) {
+            connectionGeneration += 1;
+            pushInFlight = false;
             token = "";
             clearTimeout(reconnectTimer);
             reconnectTimer = 0;
