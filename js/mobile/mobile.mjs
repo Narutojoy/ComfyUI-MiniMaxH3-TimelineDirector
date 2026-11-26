@@ -654,24 +654,22 @@ function renderAssetsPanel() {
     const points=[0,...videos().filter(item=>item.id!==clip.id).flatMap(item=>[Number(item.start||0),Number(item.start||0)+Number(item.duration||0)]),Number(currentState.selection?.start||0),Number(currentState.selection?.start||0)+Number(currentState.selection?.duration||0)];
     const snapValue=value=>{
       const threshold=10/Math.max(24,mobileTimelineScale);
-      let best=value,distance=threshold+1;
-      for(const point of points){const current=Math.abs(point-value);if(current<=threshold&&current<distance){best=point;distance=current;}}
-      return Math.max(0,best);
+      let best=value,distance=threshold+1,snapped=false;
+      for(const point of points){const current=Math.abs(point-value);if(current<=threshold&&current<distance){best=point;distance=current;snapped=true;}}
+      return {value:Math.max(0,best),snapped};
     };
     if(edge==="move"){
       const proposed=start+delta,left=snapValue(proposed),right=snapValue(proposed+duration);
-      const leftSnapped=Math.abs(left-proposed)<=10/Math.max(24,mobileTimelineScale);
-      const rightSnapped=Math.abs(right-(proposed+duration))<=10/Math.max(24,mobileTimelineScale);
-      const nextStart=leftSnapped&&(!rightSnapped||Math.abs(left-proposed)<=Math.abs(right-(proposed+duration)))?left:rightSnapped?right-duration:proposed;
+      const nextStart=left.snapped&&(!right.snapped||Math.abs(left.value-proposed)<=Math.abs(right.value-(proposed+duration)))?left.value:right.snapped?right.value-duration:proposed;
       clip.start=Math.max(0,nextStart);
     }else if(edge==="left"){
-      const end=start+duration,proposed=Math.max(0,Math.min(end-5/24,start+delta)),nextStart=Math.max(0,Math.min(end-5/24,snapValue(proposed))),applied=nextStart-start;
+      const end=start+duration,proposed=Math.max(0,Math.min(end-5/24,start+delta)),nextStart=Math.max(0,Math.min(end-5/24,snapValue(proposed).value)),applied=nextStart-start;
       clip.start=nextStart;clip.duration=end-nextStart;
       clip.trimStart=Math.max(0,Math.min(trimStart+duration-5/24,trimStart+applied));
     }else{
       const available=Math.max(5/24,Number(clip.sourceDuration||duration)-trimStart);
       const proposedEnd=start+Math.max(5/24,Math.min(available,duration+delta));
-      clip.duration=Math.max(5/24,Math.min(available,snapValue(proposedEnd)-start));
+      clip.duration=Math.max(5/24,Math.min(available,snapValue(proposedEnd).value-start));
     }
     const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
     if(bar){bar.style.left=(clip.start*mobileTimelineScale)+"px";bar.style.width=Math.max(28,clip.duration*mobileTimelineScale)+"px";}
