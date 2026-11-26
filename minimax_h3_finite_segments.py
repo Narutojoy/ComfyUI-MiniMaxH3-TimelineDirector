@@ -625,9 +625,20 @@ class MiniMaxH3FiniteSegmentExpansion(io.ComfyNode):
         cls, plan, segment_prompts, segment_count, overlap_frames,
         inject_continuity_instruction,
     ):
+        incoming_director_id = (
+            plan.get("director_node_id") if isinstance(plan, dict) else None
+        )
+        print(
+            "[MiniMaxH3 Timeline Progress DIAG] FinitePlan input "
+            f"type={type(plan).__name__} director_node_id={incoming_director_id!r}"
+        )
         finite = _prepare_finite_plan(
             plan, segment_prompts, segment_count, overlap_frames,
             bool(inject_continuity_instruction),
+        )
+        print(
+            "[MiniMaxH3 Timeline Progress DIAG] FinitePlan source_plan "
+            f"director_node_id={finite.get('source_plan', {}).get('director_node_id')!r}"
         )
         overlap = finite["overlap_frames"]
         status = (
