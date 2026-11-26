@@ -117,8 +117,8 @@ body.is-connected .connect-actions{display:none}
 .mobile-switch input,.mobile-assign input,.mobile-group-members input{width:18px;height:18px;accent-color:var(--accent-strong)}
 .mobile-hint{margin:8px 0;color:var(--muted);font-size:11px;line-height:1.7}
 .mobile-prompt{width:100%;min-height:130px;padding:12px;border:1px solid var(--line);border-radius:10px;background:#0b1018;color:var(--text);font:12px/1.65 ui-monospace,SFMono-Regular,monospace;resize:vertical}
-.mobile-segment-picker{display:flex;gap:8px;overflow-x:auto;padding:2px 1px 10px;scroll-snap-type:x proximity}
-.mobile-segment-chip{flex:0 0 auto;min-width:100px;display:grid;gap:4px;padding:10px 12px;text-align:left;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--text);scroll-snap-align:start}
+.mobile-segment-picker{display:flex;gap:8px;overflow-x:auto;overflow-y:hidden;padding:2px 1px 10px;scroll-snap-type:none;scroll-behavior:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.mobile-segment-chip{flex:0 0 auto;min-width:100px;display:grid;gap:4px;padding:10px 12px;text-align:left;border:1px solid var(--line);border-radius:11px;background:var(--panel);color:var(--text)}
 .mobile-segment-chip strong{font-size:12px}
 .mobile-segment-chip small{color:var(--muted);font-size:10px}
 .mobile-segment-chip.active{border-color:var(--accent);background:rgba(184,166,255,.13)}
