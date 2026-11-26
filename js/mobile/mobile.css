@@ -139,8 +139,14 @@ body.is-connected .connect-actions{display:none}
 .mobile-assign{display:grid;justify-items:center;gap:4px;color:var(--muted);font-size:9px}
 .mobile-icon-button{width:28px;height:28px;flex:0 0 28px;border:0;border-radius:8px;background:rgba(248,113,113,.12);color:#fca5a5;font-size:18px}
 .mobile-audio-symbol{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;border-radius:9px;background:rgba(184,166,255,.12);color:var(--accent);font-size:23px}
-.mobile-group-members{display:grid;gap:8px;margin:12px 0}
-.mobile-group-members label{display:flex;align-items:center;gap:9px;color:#cbd1dc;font-size:12px}
+.mobile-group-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0 12px}
+.mobile-group-member{display:grid;grid-template-columns:17px minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0;min-height:39px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;background:rgba(12,17,25,.55);color:#cbd1dc;font-size:11px}
+.mobile-group-member input{width:16px;height:16px;margin:0;accent-color:var(--accent-strong)}
+.mobile-group-member-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobile-segment-state{padding:3px 5px;border-radius:6px;font-size:9px;line-height:1.2;white-space:nowrap}
+.mobile-segment-state.is-enabled{background:rgba(74,222,128,.12);color:#86efac}
+.mobile-segment-state.is-disabled{background:rgba(148,163,184,.14);color:#a1a1aa}
+@media(max-width:360px){.mobile-group-members{grid-template-columns:1fr}}
 .mobile-empty{padding:22px 12px;text-align:center;color:var(--muted);font-size:12px}
 .mobile-settings-status{font-size:14px;color:#86efac}
 .mobile-settings-status code,.mobile-card code{overflow-wrap:anywhere;color:#c4b5fd}
