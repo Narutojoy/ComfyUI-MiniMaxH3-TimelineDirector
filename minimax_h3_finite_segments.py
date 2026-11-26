@@ -57,8 +57,28 @@ def _send_timeline_segment_progress(finite, index, status, error=None):
     if index < 0 or index >= len(indices):
         print(f"[MiniMaxH3 Timeline Progress] SKIP: index {index} outside {len(indices)} segments")
         return
-    payload = {"node_id": node_id, "segment_index": int(indices[index]) - 1,
-               "status": str(status), "segment_count": int(source_plan.get("segment_count") or finite.get("segment_count") or 0)}
+    original_segment_index = int(indices[index]) - 1
+    timeline_config = (source_plan.get("timeline") or {}).get("segmentConfig") or {}
+    timeline_segments = timeline_config.get("segments") or []
+    if timeline_config.get("mode") == "timeline" and timeline_segments:
+        enabled_original_indices = [
+            segment_index for segment_index, segment in enumerate(timeline_segments)
+            if isinstance(segment, dict) and segment.get("enabled") is not False
+        ]
+    else:
+        enabled_original_indices = [int(segment_number) - 1 for segment_number in indices]
+    try:
+        enabled_segment_index = enabled_original_indices.index(original_segment_index)
+    except ValueError:
+        enabled_segment_index = None
+    payload = {
+        "node_id": node_id,
+        "segment_index": original_segment_index,
+        "status": str(status),
+        "segment_count": int(source_plan.get("segment_count") or finite.get("segment_count") or 0),
+        "enabled_segment_index": enabled_segment_index,
+        "enabled_segment_count": len(enabled_original_indices),
+    }
     if error:
         payload["error"] = str(error)[:500]
     print(f"[MiniMaxH3 Timeline Progress] SEND {payload}")
