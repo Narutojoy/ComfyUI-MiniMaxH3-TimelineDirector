@@ -1031,12 +1031,19 @@ async function uploadAsset(file,kind,category) {
 
 function renderGroupsPanel() {
   const rows=groups().map(group=>{
-    const members=segments().map((segment,index)=>({segment,index})).filter(item=>item.segment.groupId===group.id);
+    const allSegments=segments();
+    const members=allSegments.filter(segment=>segment.groupId===group.id);
+    const enabledCount=members.filter(segment=>segment.enabled!==false).length;
+    const disabledCount=members.length-enabledCount;
     return `<section class="mobile-card">
-      <div class="mobile-card-heading"><h3>${escapeHTML(group.name)}</h3><span>${members.length} 个分段</span></div>
+      <div class="mobile-card-heading"><h3>${escapeHTML(group.name)}</h3><span>${members.length} 段 · 启用 ${enabledCount} / 禁用 ${disabledCount}</span></div>
       <label class="mobile-field">分组名称<input data-group-name="${escapeHTML(group.id)}" maxlength="40" value="${escapeHTML(group.name)}"></label>
-      <div class="mobile-group-members">${segments().map((segment,index)=>`
-        <label><input type="checkbox" data-group-member="${index}" data-group-id="${escapeHTML(group.id)}" ${segment.groupId===group.id?"checked":""}>${escapeHTML(segmentLabel(segment,index))}</label>`).join("")}</div>
+      <div class="mobile-group-members">${allSegments.map((segment,index)=>`
+        <label class="mobile-group-member">
+          <input type="checkbox" data-group-member="${index}" data-group-id="${escapeHTML(group.id)}" ${segment.groupId===group.id?"checked":""}>
+          <span class="mobile-group-member-name">${escapeHTML(segmentLabel(segment,index))}</span>
+          <span class="mobile-segment-state ${segment.enabled===false?"is-disabled":"is-enabled"}">${segment.enabled===false?"禁用":"启用"}</span>
+        </label>`).join("")}</div>
       <div class="mobile-field-row"><button type="button" class="mobile-secondary" data-toggle-group="${escapeHTML(group.id)}">批量启用 / 禁用</button><button type="button" class="mobile-danger" data-dissolve-group="${escapeHTML(group.id)}">解散分组</button></div>
     </section>`;
   }).join("");
