@@ -1,4 +1,6 @@
 import qrcode from "./mobile/qrcode.mjs";
+import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 
 const API_ROOT = "/minimax_h3_timeline/mobile";
 
@@ -143,8 +145,105 @@ export function attachMobilePairing(ui) {
   let reconnectTimer = 0;
   let reconnectDelay = 1000;
   let connectionGeneration = 0;
+  let activePromptId = "";
+  let pendingRunRequest = "";
+  const handledCommands = new Set();
 
   const setStatus = message => { status.textContent = message; };
+  const sendMobileEvent = event => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(event));
+    return true;
+  };
+  const reportExecution = (statusName, detail = {}) => {
+    sendMobileEvent({
+      type: "execution_status",
+      status: statusName,
+      prompt_id: String(detail.prompt_id || activePromptId || ""),
+      node: detail.node == null ? "" : String(detail.node),
+      value: Number.isFinite(Number(detail.value)) ? Number(detail.value) : undefined,
+      max: Number.isFinite(Number(detail.max)) ? Number(detail.max) : undefined,
+      message: String(detail.message || "").slice(0, 400),
+      percent: Number.isFinite(Number(detail.value)) && Number(detail.max) > 0
+        ? Math.max(0, Math.min(100, Math.round(Number(detail.value) / Number(detail.max) * 100)))
+        : undefined,
+    });
+  };
+  const handleMobileCommand = async message => {
+    const requestId = String(message.request_id || "");
+    if (!requestId || handledCommands.has(requestId)) return;
+    handledCommands.add(requestId);
+    if (handledCommands.size > 100) handledCommands.delete(handledCommands.values().next().value);
+    const reply = (ok, error = "", extra = {}) =>
+      sendMobileEvent({ type: "command_result", request_id: requestId, ok, error, ...extra });
+    if (Number(message.revision) !== revision || conflict || localDirty || pendingTimer || pushInFlight) {
+      reply(false, "desktop_state_not_synced");
+      return;
+    }
+    if (message.type === "run_request") {
+      if (pendingRunRequest || activePromptId) {
+        reply(false, "workflow_busy");
+        return;
+      }
+      pendingRunRequest = requestId;
+      try {
+        const accepted = await app.queuePrompt(0, 1);
+        if (accepted === false) {
+          reply(false, "queue_rejected");
+        } else {
+          reply(true, "", { status: "queued" });
+        }
+      } catch (error) {
+        reply(false, "queue_failed", { message: String(error?.message || error).slice(0, 400) });
+      } finally {
+        pendingRunRequest = "";
+      }
+      return;
+    }
+    if (message.type === "interrupt_request") {
+      const promptId = String(message.prompt_id || activePromptId || "");
+      if (!promptId || promptId !== activePromptId) {
+        reply(false, "no_matching_active_prompt");
+        return;
+      }
+      try {
+        await api.interrupt(promptId);
+        reply(true, "", { status: "interrupt_requested", prompt_id: promptId });
+      } catch (error) {
+        reply(false, "interrupt_failed", { message: String(error?.message || error).slice(0, 400) });
+      }
+    }
+  };
+  const executionListeners = {
+    execution_start: event => {
+      const detail = event.detail || {};
+      activePromptId = String(detail.prompt_id || "");
+      reportExecution("running", detail);
+    },
+    executing: event => {
+      const detail = event.detail || {};
+      if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) {
+        reportExecution(detail.node == null ? "finishing" : "running", detail);
+      }
+    },
+    progress: event => reportExecution("running", event.detail || {}),
+    execution_success: event => {
+      const detail = event.detail || {};
+      reportExecution("completed", detail);
+      if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+    },
+    execution_error: event => {
+      const detail = event.detail || {};
+      reportExecution("failed", { ...detail, message: detail.exception_message || detail.message });
+      if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+    },
+    execution_interrupted: event => {
+      const detail = event.detail || {};
+      reportExecution("interrupted", detail);
+      if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+    },
+  };
+  for (const [name, listener] of Object.entries(executionListeners)) api.addEventListener(name, listener);
   const applyRemote = payload => {
     if (!payload || !payload.state || typeof payload.state !== "object") return;
     applyingRemote = true;
@@ -292,6 +391,8 @@ export function attachMobilePairing(ui) {
               applyRemote(message);
               setStatus("手机端修改已同步到电脑。");
             }
+          } else if (message.type === "run_request" || message.type === "interrupt_request") {
+            void handleMobileCommand(message);
           }
         });
         activeSocket.addEventListener("close", event => {
@@ -514,6 +615,7 @@ export function attachMobilePairing(ui) {
     clearTimeout(reconnectTimer);
     reconnectTimer = 0;
     token = "";
+    for (const [name, listener] of Object.entries(executionListeners)) api.removeEventListener(name, listener);
     const previousSocket = socket;
     socket = null;
     previousSocket?.close();
