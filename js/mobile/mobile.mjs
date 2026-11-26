@@ -23,16 +23,25 @@ const runProgressLabel = document.querySelector("#mobile-run-progress-label");
 const queueCount = document.querySelector("#mobile-queue-count");
 const queueList = document.querySelector("#mobile-queue-list");
 let latestQueue = { queue_running: [], queue_pending: [] };
+let mobileRunQueue = [];
+let mobileRunSequence = 0;
+let runDispatchInFlight = false;
 
 function renderQueue(snapshot = latestQueue) {
   latestQueue = snapshot && typeof snapshot === "object" ? snapshot : { queue_running: [], queue_pending: [] };
   const running = Array.isArray(latestQueue.queue_running) ? latestQueue.queue_running : [];
   const pending = Array.isArray(latestQueue.queue_pending) ? latestQueue.queue_pending : [];
-  if (queueCount) queueCount.textContent = String(running.length + pending.length);
+  const localPending = mobileRunQueue.map(item => ({ label: "手机提交任务 " + item.sequence, prompt_id: "", state: "等待提交" }));
+  const localSubmitting = pendingCommandType === "run_request" && pendingCommandId
+    ? [{ label: "手机提交任务", prompt_id: "", state: "正在提交" }]
+    : [];
+  if (queueCount) queueCount.textContent = String(running.length + pending.length + localPending.length + localSubmitting.length);
   if (!queueList) return;
   const rows = [
     ...running.map(item => ({ ...item, state: "正在执行" })),
-    ...pending.map(item => ({ ...item, state: "等待执行" }))
+    ...pending.map(item => ({ ...item, state: "等待执行" })),
+    ...localSubmitting,
+    ...localPending
   ];
   if (!rows.length) {
     queueList.innerHTML = '<p class="mobile-queue-empty">当前没有排队任务</p>';
@@ -41,7 +50,7 @@ function renderQueue(snapshot = latestQueue) {
   queueList.innerHTML = rows.map(item => {
     const label = escapeHTML(item.label || "工作流任务");
     const id = escapeHTML(String(item.prompt_id || "").slice(0, 8));
-    const meta = id ? "任务编号 " + id : "ComfyUI 队列任务";
+    const meta = id ? "任务编号 " + id : item.state === "等待提交" || item.state === "正在提交" ? "手机端请求" : "ComfyUI 队列任务";
     return '<div class="mobile-queue-item"><div class="mobile-queue-item-main"><strong>' + label + '</strong><small>' + meta + '</small></div><span class="mobile-queue-state ' + (item.state === "正在执行" ? "is-running" : "") + '">' + item.state + '</span></div>';
   }).join("");
 }
@@ -98,7 +107,7 @@ function setRunStatus(status, detail = "", percent = null) {
   if (runDetail) runDetail.textContent = detail;
   if (runProgressBar) runProgressBar.style.width = percent == null ? "0%" : Math.max(0, Math.min(100, percent)) + "%";
   if (runProgressLabel) runProgressLabel.textContent = percent == null ? "当前采样进度" : "当前采样进度 · " + Math.round(Math.max(0, Math.min(100, percent))) + "%";
-  if (runButton) runButton.disabled = !!pendingCommandId || !sessionToken || conflict;
+  if (runButton) runButton.disabled = !sessionToken || conflict || pendingCommandType === "save_request";
   if (stopButton) stopButton.disabled = !activePromptId || !sessionToken;
   if (saveWorkflowButton) saveWorkflowButton.disabled = !!pendingCommandId || !sessionToken || conflict;
 }
@@ -141,7 +150,7 @@ function sendRunCommand(type, extra = {}) {
 }
 
 async function requestWorkflowSave() {
-  if (!sessionToken || pendingCommandId) return;
+  if (!sessionToken || pendingCommandId || mobileRunQueue.length || runDispatchInFlight) return;
   setRunStatus("正在同步", "正在确认手机端最新修改已同步到电脑…");
   try {
     await flushStateBeforeCommand();
@@ -152,19 +161,32 @@ async function requestWorkflowSave() {
   }
 }
 
-async function requestWorkflowRun() {
-  if (!sessionToken || pendingCommandId) return;
-  workflowBusy = true;
-  executionTerminal = false;
-  setRunStatus("正在同步", "正在确认手机端最新修改已保存…");
+async function dispatchNextMobileRun() {
+  if (!sessionToken || pendingCommandId || runDispatchInFlight || !mobileRunQueue.length) return;
+  runDispatchInFlight = true;
   try {
     await flushStateBeforeCommand();
-    sendRunCommand("run_request");
-    setRunStatus("请求已发送", "电脑端正在接收运行请求…");
+    const task = mobileRunQueue.shift();
+    sendRunCommand("run_request", { mobile_queue_sequence: task.sequence });
+    setRunStatus("正在提交队列", "已提交当前请求，手机端还有 " + mobileRunQueue.length + " 个任务等待提交…");
   } catch (error) {
+    mobileRunQueue = [];
     workflowBusy = false;
-    setRunStatus("无法运行", error.message);
+    setRunStatus("无法加入队列", error.message);
+  } finally {
+    runDispatchInFlight = false;
+    renderQueue();
   }
+}
+
+async function requestWorkflowRun() {
+  if (!sessionToken || conflict || pendingCommandType === "save_request") return;
+  mobileRunQueue.push({ sequence: ++mobileRunSequence });
+  workflowBusy = true;
+  executionTerminal = false;
+  setRunStatus("已加入手机队列", "手机端还有 " + mobileRunQueue.length + " 个任务等待提交…");
+  renderQueue();
+  void dispatchNextMobileRun();
 }
 
 function requestWorkflowStop() {
@@ -193,13 +215,24 @@ function receiveExecutionStatus(message) {
     const segmentMatch = nodeName.match(/\.sample_(\d+)\b/i);
     if (segmentMatch) {
       const parsedIndex = Number(segmentMatch[1]) - 1;
-      const total = segments().length;
-      if (Number.isInteger(parsedIndex) && parsedIndex >= 0 && parsedIndex < total) executingSegmentIndex = parsedIndex;
+      const allSegments = segments();
+      const enabledSegments = allSegments.map((segment, index) => ({ segment, index }))
+        .filter(item => item.segment?.enabled !== false);
+      const enabledRank = enabledSegments.findIndex(item => item.index === parsedIndex);
+      if (Number.isInteger(parsedIndex) && parsedIndex >= 0 && enabledRank >= 0) {
+        executingSegmentIndex = parsedIndex;
+        if (runSegmentLabel) {
+          runSegmentLabel.textContent = "当前启用分段：" + (enabledRank + 1) + " / " + enabledSegments.length +
+            "（原第 " + (parsedIndex + 1) + " 段）";
+        }
+      }
     }
-    if (runSegmentLabel) {
+    if (runSegmentLabel && !segmentMatch) {
+      const enabledCount = segments().filter(segment => segment?.enabled !== false).length;
       runSegmentLabel.textContent = executingSegmentIndex == null
-        ? "当前分段：识别中"
-        : "当前分段：第 " + (executingSegmentIndex + 1) + " / " + segments().length + " 段";
+        ? "当前启用分段：识别中"
+        : "当前启用分段：" + segments().slice(0, executingSegmentIndex + 1).filter(segment => segment?.enabled !== false).length +
+          " / " + enabledCount + "（原第 " + (executingSegmentIndex + 1) + " 段）";
     }
     setRunStatus("执行中", segmentMatch ? "正在生成本段视频…" : "ComfyUI 正在执行工作流…", percent);
   } else if (message.status === "finishing") {
@@ -243,7 +276,7 @@ function setConnected(connected, detail = "") {
     activePromptId = "";
     workflowBusy = false;
   }
-  if (runButton) runButton.disabled = !connected || !!pendingCommandId || conflict;
+  if (runButton) runButton.disabled = !connected || conflict || pendingCommandType === "save_request";
   if (stopButton) stopButton.disabled = !connected || !activePromptId;
   if (saveWorkflowButton) saveWorkflowButton.disabled = !connected || !!pendingCommandId || conflict;
   if (gettingStarted) gettingStarted.hidden = connected;
@@ -418,6 +451,12 @@ function connectEvents(token) {
       pendingCommandId = "";
       pendingCommandType = "";
       if (message.ok) {
+        if (completedCommandType === "run_request") {
+          workflowBusy = true;
+          if (mobileRunQueue.length) {
+            setRunStatus("正在提交队列", "当前任务已交给 ComfyUI，继续提交剩余 " + mobileRunQueue.length + " 个任务…");
+          }
+        }
         if (message.status === "saved") {
           setRunStatus("已保存", "ComfyUI 已完成工作流保存。");
         } else if (message.status === "queued" && !executionTerminal) {
@@ -440,6 +479,12 @@ function connectEvents(token) {
           save_failed: "电脑端保存工作流失败",
         };
         setRunStatus("操作未完成", errors[message.error] || message.message || message.error || "未知错误");
+        if (completedCommandType === "run_request") mobileRunQueue = [];
+      }
+      if (completedCommandType === "run_request" && mobileRunQueue.length) {
+        queueMicrotask(() => void dispatchNextMobileRun());
+      } else {
+        renderQueue();
       }
     } else if (message.type === "queue_status") {
       renderQueue(message);
