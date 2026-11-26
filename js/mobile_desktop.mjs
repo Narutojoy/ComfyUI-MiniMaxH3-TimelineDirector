@@ -301,7 +301,8 @@ export function attachMobilePairing(ui) {
     if (!Number.isInteger(segmentIndex) || segmentIndex < 0) return;
     sendMobileEvent({
       type: "execution_status",
-      status: String(payload.status || "running"),
+      status: "running",
+      segment_status: String(payload.status || "running"),
       prompt_id: activePromptId,
       segment_index: segmentIndex,
       segment_count: Number.isInteger(segmentCount) && segmentCount > 0 ? segmentCount : undefined,
