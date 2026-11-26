@@ -218,3 +218,16 @@ body.is-connected .connect-actions{display:none}
 
 .mobile-run-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;color:var(--muted);font-size:11px;font-weight:600}
 .mobile-run-meta span:first-child{color:var(--text)}
+
+.mobile-queue-panel{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.mobile-queue-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-size:13px}
+.mobile-queue-heading span{color:var(--muted);font-size:11px}
+.mobile-queue-heading b{color:var(--text);font-size:14px}
+.mobile-queue-list{display:grid;gap:8px}
+.mobile-queue-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.mobile-queue-item-main{display:grid;gap:4px;min-width:0}
+.mobile-queue-item-main strong{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mobile-queue-item-main small{font-size:10px;color:var(--muted)}
+.mobile-queue-state{flex:0 0 auto;font-size:10px;color:var(--muted);padding:4px 7px;border-radius:8px;background:rgba(148,163,184,.1)}
+.mobile-queue-state.is-running{color:#a78bfa;background:rgba(167,139,250,.13)}
+.mobile-queue-empty{margin:0;padding:10px 0;color:var(--muted);font-size:11px}
