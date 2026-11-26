@@ -651,19 +651,27 @@ function renderAssetsPanel() {
     event.preventDefault();
     const clip=videoDrag.clip,edge=videoDrag.edge,start=videoDrag.start,duration=videoDrag.duration,trimStart=videoDrag.trimStart;
     const delta=Math.round(((event.clientX-videoDrag.startX)/mobileTimelineScale)*24)/24;
+    const points=[0,...videos().filter(item=>item.id!==clip.id).flatMap(item=>[Number(item.start||0),Number(item.start||0)+Number(item.duration||0)]),Number(currentState.selection?.start||0),Number(currentState.selection?.start||0)+Number(currentState.selection?.duration||0)];
+    const snapValue=value=>{
+      const threshold=10/Math.max(24,mobileTimelineScale);
+      let best=value,distance=threshold+1;
+      for(const point of points){const current=Math.abs(point-value);if(current<=threshold&&current<distance){best=point;distance=current;}}
+      return Math.max(0,best);
+    };
     if(edge==="move"){
-      clip.start=Math.max(0,start+delta);
-      const others=videos().filter(item=>item.id!==clip.id);
-      const candidates=others.flatMap(item=>[Number(item.start||0),Number(item.start||0)+Number(item.duration||0)]);
-      const nearest=candidates.reduce((best,value)=>Math.abs(value-clip.start)<Math.abs(best-clip.start)?value:best,clip.start);
-      if(Math.abs(nearest-clip.start)<=0.12)clip.start=Math.max(0,nearest);
+      const proposed=start+delta,left=snapValue(proposed),right=snapValue(proposed+duration);
+      const leftSnapped=Math.abs(left-proposed)<=10/Math.max(24,mobileTimelineScale);
+      const rightSnapped=Math.abs(right-(proposed+duration))<=10/Math.max(24,mobileTimelineScale);
+      const nextStart=leftSnapped&&(!rightSnapped||Math.abs(left-proposed)<=Math.abs(right-(proposed+duration)))?left:rightSnapped?right-duration:proposed;
+      clip.start=Math.max(0,nextStart);
     }else if(edge==="left"){
-      const end=start+duration,nextStart=Math.max(0,Math.min(end-5/24,start+delta)),applied=nextStart-start;
+      const end=start+duration,proposed=Math.max(0,Math.min(end-5/24,start+delta)),nextStart=Math.max(0,Math.min(end-5/24,snapValue(proposed))),applied=nextStart-start;
       clip.start=nextStart;clip.duration=end-nextStart;
       clip.trimStart=Math.max(0,Math.min(trimStart+duration-5/24,trimStart+applied));
     }else{
       const available=Math.max(5/24,Number(clip.sourceDuration||duration)-trimStart);
-      clip.duration=Math.max(5/24,Math.min(available,duration+delta));
+      const proposedEnd=start+Math.max(5/24,Math.min(available,duration+delta));
+      clip.duration=Math.max(5/24,Math.min(available,snapValue(proposedEnd)-start));
     }
     const bar=editorContent.querySelector('[data-video-clip="'+CSS.escape(String(clip.id))+'"]');
     if(bar){bar.style.left=(clip.start*mobileTimelineScale)+"px";bar.style.width=Math.max(28,clip.duration*mobileTimelineScale)+"px";}
