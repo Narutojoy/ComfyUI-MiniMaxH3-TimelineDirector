@@ -139,6 +139,15 @@ body.is-connected .connect-actions{display:none}
 .mobile-assign{display:grid;justify-items:center;gap:4px;color:var(--muted);font-size:9px}
 .mobile-icon-button{width:28px;height:28px;flex:0 0 28px;border:0;border-radius:8px;background:rgba(248,113,113,.12);color:#fca5a5;font-size:18px}
 .mobile-audio-symbol{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;border-radius:9px;background:rgba(184,166,255,.12);color:var(--accent);font-size:23px}
+.mobile-group-card{padding:0;overflow:hidden}
+.mobile-group-summary{display:grid;grid-template-columns:minmax(0,1fr) auto 18px;align-items:center;gap:8px;min-height:62px;padding:14px 16px;cursor:pointer;list-style:none}
+.mobile-group-summary::-webkit-details-marker{display:none}
+.mobile-group-summary-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:15px;font-weight:700;color:var(--text)}
+.mobile-group-summary-meta{color:var(--muted);font-size:10px;text-align:right;white-space:nowrap}
+.mobile-group-chevron{color:var(--accent);font-size:20px;text-align:center;transition:transform .18s ease}
+.mobile-group-card[open] .mobile-group-chevron{transform:rotate(180deg)}
+.mobile-group-content{padding:0 16px 16px;border-top:1px solid var(--line)}
+.mobile-group-content>.mobile-field{margin-top:12px}
 .mobile-group-members{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:10px 0 12px}
 .mobile-group-member{display:grid;grid-template-columns:17px minmax(0,1fr) auto;align-items:center;gap:7px;min-width:0;min-height:39px;padding:6px 8px;border:1px solid var(--line);border-radius:9px;background:rgba(12,17,25,.55);color:#cbd1dc;font-size:11px}
 .mobile-group-member input{width:16px;height:16px;margin:0;accent-color:var(--accent-strong)}
