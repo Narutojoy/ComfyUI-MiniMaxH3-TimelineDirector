@@ -815,7 +815,8 @@ async function uploadAsset(file,kind,category) {
     }else if(kind==="video"){
       if(!info.hasVideo)throw new Error("视频文件中没有可用画面轨道");
       const start=videos().reduce((max,clip)=>Math.max(max,Number(clip.start||0)+Number(clip.duration||0)),0);
-      currentState.videoClips.push({id:uid(),file:info.filename,name:file.name,start,duration:Math.max(5/24,Number(info.duration)||5),trimStart:0,sourceDuration:Number(info.duration)||5,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth:Number(referenceSize.width)||832,referenceHeight:Number(referenceSize.height)||480,peaks:info.peaks||[],proxy:""});
+      const duration=Math.max(5/24,Number(info.duration)||5);
+      currentState.videoClips.push({id:uid(),file:info.filename,name:file.name,start,duration,trimStart:0,sourceDuration:duration,hasAudio:!!info.hasAudio,referenceMode:"edit",referenceWidth:Number(referenceSize.width)||832,referenceHeight:Number(referenceSize.height)||480,peaks:info.peaks||[],proxy:""});
     }else{
       if(!info.hasAudio)throw new Error("文件中没有可用音轨");
       currentState.audios.push({id:uid(),file:info.filename,name:file.name,duration:info.duration||0,trimStart:0,audioMode:"reference",audioGroup:category});
