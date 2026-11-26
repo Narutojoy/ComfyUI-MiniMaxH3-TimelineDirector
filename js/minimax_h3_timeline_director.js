@@ -2433,7 +2433,7 @@ app.registerExtension({
       directorWidget.computeSize=width=>[Math.max(100,(this.size?.[0]||width||860)-20),directorWidget.__m3tdHeight||DIRECTOR_HEIGHT];
       const brand=tr(nodeData.name==="MiniMaxH3TimelinePlanner"?"brandPlanner":"brandDirector");
       this.__m3td=new TimelineDirectorUI(this,root,timelineWidget,brand,nodeData.name==="MiniMaxH3TimelinePlanner");
-      attachMobilePairing(this.__m3td);
+      this.__m3tdMobileCleanup=attachMobilePairing(this.__m3td);
       this.__m3td.directorWidget=directorWidget;
       this.__m3tdFocusedTextWheel=e=>{
         let input=e.target?.closest?.("textarea");
@@ -2523,6 +2523,7 @@ app.registerExtension({
       window.removeEventListener("pointermove",this.__m3tdResizePointerMove,true);
       window.removeEventListener("pointerup",this.__m3tdResizePointerUp,true);
       window.removeEventListener("pointercancel",this.__m3tdResizePointerUp,true);
+      this.__m3tdMobileCleanup?.();this.__m3tdMobileCleanup=null;
       this.__m3td?.destroy();return originalRemoved?.apply(this,arguments);
     };
   }
