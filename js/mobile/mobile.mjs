@@ -854,7 +854,7 @@ function renderGroupsPanel() {
     const segment=segments()[Number(input.dataset.groupMember)],groupId=input.dataset.groupId;
     if(!segment)return;
     if(input.checked)segment.groupId=groupId;else if(segment.groupId===groupId)delete segment.groupId;
-    scheduleSave();
+    scheduleSave();renderPanel();
   }));
   editorContent.querySelectorAll("[data-toggle-group]").forEach(button=>button.addEventListener("click",()=>{
     const id=button.dataset.toggleGroup;
