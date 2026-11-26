@@ -121,11 +121,13 @@ function requestWorkflowStop() {
 function receiveExecutionStatus(message) {
   if (message.prompt_id) activePromptId = message.prompt_id;
   if (message.status === "queued") {
+    executionTerminal = false;
     workflowBusy = true;
     setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
   } else if (message.status === "stopping") {
     setRunStatus("正在停止", "ComfyUI 正在处理中断请求…");
   } else if (message.status === "running") {
+    executionTerminal = false;
     workflowBusy = true;
     const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
     setRunStatus("执行中", message.node ? "当前节点：" + message.node : "ComfyUI 正在执行工作流…", percent);
