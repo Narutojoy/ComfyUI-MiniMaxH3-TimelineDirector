@@ -46,6 +46,7 @@ let referenceSize = { width: 832, height: 480 };
 let activePromptId = "";
 let pendingCommandId = "";
 let workflowBusy = false;
+let executionTerminal = false;
 
 const escapeHTML = value => String(value ?? "").replace(/[&<>"']/g, ch => ({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
@@ -93,6 +94,7 @@ function sendRunCommand(type, extra = {}) {
 async function requestWorkflowRun() {
   if (workflowBusy || !sessionToken) return;
   workflowBusy = true;
+  executionTerminal = false;
   setRunStatus("正在同步", "正在确认手机端最新修改已保存…");
   try {
     await flushStateBeforeCommand();
@@ -130,14 +132,17 @@ function receiveExecutionStatus(message) {
   } else if (message.status === "completed") {
     activePromptId = "";
     workflowBusy = false;
+    executionTerminal = true;
     setRunStatus("已完成", "工作流执行成功。", 100);
   } else if (message.status === "failed") {
     activePromptId = "";
     workflowBusy = false;
+    executionTerminal = true;
     setRunStatus("执行失败", message.message || "请在电脑端查看 ComfyUI 错误详情。");
   } else if (message.status === "interrupted") {
     activePromptId = "";
     workflowBusy = false;
+    executionTerminal = true;
     setRunStatus("已停止", "当前工作流已中断。");
   }
 }
@@ -331,7 +336,7 @@ function connectEvents(token) {
       if (message.request_id && message.request_id !== pendingCommandId) return;
       pendingCommandId = "";
       if (message.ok) {
-        if (message.status === "queued") {
+        if (message.status === "queued" && !executionTerminal) {
           workflowBusy = true;
           setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
         } else if (message.status === "interrupt_requested") {
