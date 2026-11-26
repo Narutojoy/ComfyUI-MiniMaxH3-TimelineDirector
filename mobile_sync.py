@@ -43,6 +43,7 @@ class MobileSession:
     expires_at: float = field(default_factory=lambda: time.time() + SESSION_TTL_SECONDS)
     sockets: set[web.WebSocketResponse] = field(default_factory=set)
     socket_roles: dict[web.WebSocketResponse, str] = field(default_factory=dict)
+    execution_status: dict[str, Any] = field(default_factory=dict)
 
 
 def _json_size(value: Any) -> int:
@@ -384,7 +385,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         if session is None:
             await socket.close(code=4003, message=b"Session revoked")
             return socket
-        await socket.send_json({"type": "ready", "revision": session.revision, "updated_at": session.updated_at, "state": session.state})
+        await socket.send_json({"type": "ready", "revision": session.revision, "updated_at": session.updated_at, "state": session.state, "execution_status": session.execution_status})
         async for message in socket:
             if message.type == WSMsgType.ERROR:
                 break
@@ -428,6 +429,14 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                             value = event[key]
                             if isinstance(value, (str, int, float, bool)) or value is None:
                                 safe_event[key] = value if not isinstance(value, str) else value[:512]
+                    if event_type == "execution_status":
+                        session.execution_status = safe_event
+                    elif event_type == "command_result" and event.get("status") in {"queued", "interrupt_requested"}:
+                        session.execution_status = {
+                            "type": "execution_status",
+                            "status": "queued" if event.get("status") == "queued" else "stopping",
+                            "prompt_id": str(event.get("prompt_id") or "")[:128],
+                        }
                     await _send_to_role(session, "mobile", safe_event)
     except asyncio.TimeoutError:
         await socket.close(code=4001, message=b"Authentication timeout")
