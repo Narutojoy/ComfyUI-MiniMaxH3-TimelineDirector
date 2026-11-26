@@ -164,6 +164,8 @@ async def _send_to_role(session: MobileSession, role: str, message: dict[str, An
         try:
             await peer.send_str(payload)
             delivered += 1
+            if role == "desktop":
+                break
         except Exception:
             stale.append(peer)
     for peer in stale:
