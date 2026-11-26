@@ -198,7 +198,7 @@ export function attachMobilePairing(ui) {
         reply(false, "desktop_state_not_synced");
         return;
       }
-      if (pendingRunRequest || activePromptId || workflowQueued) {
+      if (pendingRunRequest) {
         reply(false, "workflow_busy");
         return;
       }
@@ -377,12 +377,14 @@ export function attachMobilePairing(ui) {
         socket = activeSocket;
         activeSocket.addEventListener("open", () => {
           if (socket === activeSocket) activeSocket.send(JSON.stringify({ token }));
+          void publishQueueSnapshot();
         });
         activeSocket.addEventListener("message", event => {
           if (socket !== activeSocket) return;
           let message;
           try { message = JSON.parse(event.data); } catch { return; }
           if (message.type === "ready") {
+            void publishQueueSnapshot();
             const remoteRevision = Number(message.revision) || 0;
             if (localDirty) {
               if (remoteRevision > revision && JSON.stringify(message.state) === JSON.stringify(ui.state)) {
@@ -474,6 +476,41 @@ export function attachMobilePairing(ui) {
     connectSocket();
   };
 
+
+  let queuePollInFlight = false;
+  let lastQueueSnapshot = "";
+  const publishQueueSnapshot = async () => {
+    if (!token || !socket || socket.readyState !== WebSocket.OPEN || queuePollInFlight) return;
+    queuePollInFlight = true;
+    try {
+      const response = await api.fetchApi("/queue");
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      const data = await response.json();
+      const normalize = (entries, state) => (Array.isArray(entries) ? entries : []).slice(0, 100).map((entry, index) => {
+        const tuple = Array.isArray(entry) ? entry : [];
+        const promptId = String(tuple[1] || "");
+        const extra = tuple[3] && typeof tuple[3] === "object" ? tuple[3] : {};
+        const metadata = extra.workflow_metadata && typeof extra.workflow_metadata === "object" ? extra.workflow_metadata : {};
+        const label = String(metadata.name || metadata.title || extra.workflow_name || (state === "running" ? "正在执行的工作流" : "排队任务 " + (index + 1))).slice(0, 120);
+        const created = Number(extra.create_time || extra.created_at || 0);
+        return { prompt_id: promptId.slice(0, 128), number: Number(tuple[0]) || 0, label, state, create_time: Number.isFinite(created) ? created : 0 };
+      });
+      const snapshot = {
+        queue_running: normalize(data.queue_running, "running"),
+        queue_pending: normalize(data.queue_pending, "pending")
+      };
+      const serialized = JSON.stringify(snapshot);
+      if (serialized !== lastQueueSnapshot) {
+        lastQueueSnapshot = serialized;
+        sendMobileEvent({ type: "queue_status", ...snapshot });
+      }
+    } catch (error) {
+      // Keep the last known queue on transient endpoint errors.
+    } finally {
+      queuePollInFlight = false;
+    }
+  };
+  setInterval(publishQueueSnapshot, 1500);
   const originalSync = ui.sync.bind(ui);
   ui.sync = (...args) => {
     const result = originalSync(...args);
