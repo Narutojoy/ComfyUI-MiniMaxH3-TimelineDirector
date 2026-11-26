@@ -605,10 +605,10 @@ function renderSegmentsPanel() {
       <div class="mobile-card-heading"><h3>本段素材引用</h3><span>图片最多 9 个 · 音频最多 3 个</span></div>
       <p class="mobile-hint">图片：${segment.images.length} 个　音频：${segment.audios.length} 个。可在此调整本段内的引用顺序。</p>
       <div class="mobile-assigned-list"><strong>图片顺序</strong>
-        ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row"><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
+        ${segment.images.map((id,index)=>{const asset=images().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="images" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整图片顺序" title="按住拖动排序">⠿</button><span>Picture ${index+1} · ${escapeHTML(asset.name||asset.file)}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="images" data-index="${index}" data-direction="down" ${index===segment.images.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用图片。</p>'}
       </div>
       <div class="mobile-assigned-list"><strong>音频顺序</strong>
-        ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row"><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
+        ${segment.audios.map((id,index)=>{const asset=audios().find(item=>String(item.id)===String(id));return asset?`<div class="mobile-assigned-row" data-sortable-segment-asset="audios" data-index="${index}"><button type="button" class="mobile-drag-handle" aria-label="拖动调整音频顺序" title="按住拖动排序">⠿</button><span>Audio ${index+1} · ${escapeHTML(asset.name||asset.file)} ${asset.audioMode==="locked"?"（锁定）":""}</span><div class="mobile-order-actions"><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="up" ${index===0?"disabled":""}>↑</button><button type="button" data-reorder-segment-asset="audios" data-index="${index}" data-direction="down" ${index===segment.audios.length-1?"disabled":""}>↓</button></div></div>`:"";}).join("")||'<p class="mobile-empty">本段尚未引用音频。</p>'}
       </div>
       <button type="button" class="mobile-secondary full-width" data-open-assets>管理本段素材</button>
     </section>
@@ -678,6 +678,49 @@ function renderSegmentsPanel() {
     if(!Array.isArray(list)||target<0||target>=list.length)return;
     [list[index],list[target]]=[list[target],list[index]];
     scheduleSave();renderPanel();
+  }));
+
+  let assetDrag=null;
+  const clearAssetDrag=()=>{
+    editorContent.querySelectorAll(".mobile-assigned-row.is-dragging,.mobile-assigned-row.is-drop-target").forEach(row=>row.classList.remove("is-dragging","is-drop-target"));
+    window.removeEventListener("pointermove",moveAssignedAsset);
+    window.removeEventListener("pointerup",finishAssignedAsset);
+    window.removeEventListener("pointercancel",cancelAssignedAsset);
+    assetDrag=null;
+  };
+  const moveAssignedAsset=event=>{
+    if(!assetDrag||event.pointerId!==assetDrag.pointerId)return;
+    event.preventDefault();
+    const under=document.elementFromPoint(event.clientX,event.clientY)?.closest("[data-sortable-segment-asset]");
+    editorContent.querySelectorAll(".mobile-assigned-row.is-drop-target").forEach(row=>row.classList.remove("is-drop-target"));
+    if(under&&under.dataset.sortableSegmentAsset===assetDrag.kind&&Number(under.dataset.index)!==assetDrag.from){
+      assetDrag.to=Number(under.dataset.index);
+      under.classList.add("is-drop-target");
+    }
+  };
+  const finishAssignedAsset=event=>{
+    if(!assetDrag||event.pointerId!==assetDrag.pointerId)return;
+    const {kind,from,to}=assetDrag;
+    clearAssetDrag();
+    if(to===null||to===from)return;
+    const list=segment[kind];
+    if(!Array.isArray(list)||from<0||from>=list.length||to<0||to>=list.length)return;
+    const [moved]=list.splice(from,1);
+    list.splice(to,0,moved);
+    scheduleSave();renderPanel();
+  };
+  const cancelAssignedAsset=()=>clearAssetDrag();
+  editorContent.querySelectorAll(".mobile-drag-handle").forEach(handle=>handle.addEventListener("pointerdown",event=>{
+    if(event.pointerType==="mouse"&&event.button!==0)return;
+    const row=handle.closest("[data-sortable-segment-asset]");
+    if(!row)return;
+    event.preventDefault();
+    const kind=row.dataset.sortableSegmentAsset,from=Number(row.dataset.index);
+    assetDrag={kind,from,to:null,pointerId:event.pointerId};
+    row.classList.add("is-dragging");
+    window.addEventListener("pointermove",moveAssignedAsset,{passive:false});
+    window.addEventListener("pointerup",finishAssignedAsset,{once:true});
+    window.addEventListener("pointercancel",cancelAssignedAsset,{once:true});
   }));
 }
 
