@@ -72,11 +72,6 @@ export function attachMobilePairing(ui) {
   if (!head) return;
 
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
-  const isMobileDevice = (
-    typeof navigator.userAgentData?.mobile === "boolean" && navigator.userAgentData.mobile
-  ) || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
-    || navigator.maxTouchPoints > 0;
-
   const button = document.createElement("button");
   button.type = "button";
   button.className = "m3td-btn";
@@ -84,17 +79,15 @@ export function attachMobilePairing(ui) {
   button.title = "生成手机移动导演台的一次性配对码";
   head.insertBefore(button, head.children[1] || null);
 
-  if (isMobileDevice) {
-    const mobileReturnButton = document.createElement("button");
-    mobileReturnButton.type = "button";
-    mobileReturnButton.className = "m3td-btn";
-    mobileReturnButton.textContent = "返回移动版";
-    mobileReturnButton.title = "返回手机移动导演台，保留当前配对会话";
-    mobileReturnButton.addEventListener("click", () => {
-      window.location.assign(mobileUrl);
-    });
-    head.insertBefore(mobileReturnButton, button.nextSibling);
-  }
+  const mobileReturnButton = document.createElement("button");
+  mobileReturnButton.type = "button";
+  mobileReturnButton.className = "m3td-btn";
+  mobileReturnButton.textContent = "返回移动版";
+  mobileReturnButton.title = "返回移动导演台页面，保留当前配对会话";
+  mobileReturnButton.addEventListener("click", () => {
+    window.location.assign(mobileUrl);
+  });
+  head.insertBefore(mobileReturnButton, button.nextSibling);
 
   const dialog = ensureDialog();
   const status = dialog.querySelector("[data-status]");
