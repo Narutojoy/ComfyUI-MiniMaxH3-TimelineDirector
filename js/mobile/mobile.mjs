@@ -45,6 +45,7 @@ let nodeUuid = "";
 let referenceSize = { width: 832, height: 480 };
 let activePromptId = "";
 let pendingCommandId = "";
+let pendingCommandType = "";
 let workflowBusy = false;
 let executionTerminal = false;
 
@@ -87,6 +88,7 @@ function sendRunCommand(type, extra = {}) {
   const requestId = globalThis.crypto?.randomUUID?.();
   if (!requestId) throw new Error("当前浏览器不支持安全请求编号");
   pendingCommandId = requestId;
+  pendingCommandType = type;
   socket.send(JSON.stringify({ type, request_id: requestId, revision, ...extra }));
   return requestId;
 }
@@ -334,7 +336,9 @@ function connectEvents(token) {
       feedback("配对成功，正在建立实时同步。", "success");
     } else if (message.type === "command_result") {
       if (message.request_id && message.request_id !== pendingCommandId) return;
+      const completedCommandType = pendingCommandType;
       pendingCommandId = "";
+      pendingCommandType = "";
       if (message.ok) {
         if (message.status === "queued" && !executionTerminal) {
           workflowBusy = true;
@@ -343,7 +347,7 @@ function connectEvents(token) {
           setRunStatus("停止请求已发送", "ComfyUI 正在处理中断请求…");
         }
       } else {
-        workflowBusy = false;
+        if (completedCommandType === "run_request") workflowBusy = false;
         const errors = {
           desktop_offline: "电脑端导演台没有在线连接",
           revision_mismatch: "手机与电脑版本不一致，请等待同步后重试",
