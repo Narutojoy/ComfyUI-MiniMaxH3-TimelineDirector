@@ -432,11 +432,14 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                     if event_type == "execution_status":
                         session.execution_status = safe_event
                     elif event_type == "command_result" and event.get("status") in {"queued", "interrupt_requested"}:
-                        session.execution_status = {
-                            "type": "execution_status",
-                            "status": "queued" if event.get("status") == "queued" else "stopping",
-                            "prompt_id": str(event.get("prompt_id") or "")[:128],
-                        }
+                        current_status = session.execution_status.get("status")
+                        terminal = current_status in {"completed", "failed", "interrupted"}
+                        if not terminal and not (event.get("status") == "queued" and current_status == "running"):
+                            session.execution_status = {
+                                "type": "execution_status",
+                                "status": "queued" if event.get("status") == "queued" else "stopping",
+                                "prompt_id": str(event.get("prompt_id") or "")[:128],
+                            }
                     await _send_to_role(session, "mobile", safe_event)
     except asyncio.TimeoutError:
         await socket.close(code=4001, message=b"Authentication timeout")
