@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { createWindows, editWindow, minimumAlignedLength, nearestOverlap, applyGlobalOverlapFrames, setWindowContributionDuration } from "./segment_windows.mjs";
-import { attachMobilePairing } from "./mobile_desktop.mjs";
+import { attachMobilePairing } from "./mobile_desktop.mjs?v=20261126-3";
 
 const TIMELINE_NODE_NAMES = new Set(["MiniMaxH3TimelinePlanner", "MiniMaxH3TimelineDirector"]);
 const STYLE_ID = "m3td-style";
