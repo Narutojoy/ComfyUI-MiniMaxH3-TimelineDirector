@@ -114,6 +114,34 @@ function requestWorkflowStop() {
   }
 }
 
+function receiveExecutionStatus(message) {
+  if (message.prompt_id) activePromptId = message.prompt_id;
+  if (message.status === "queued") {
+    workflowBusy = true;
+    setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
+  } else if (message.status === "stopping") {
+    setRunStatus("正在停止", "ComfyUI 正在处理中断请求…");
+  } else if (message.status === "running") {
+    workflowBusy = true;
+    const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
+    setRunStatus("执行中", message.node ? "当前节点：" + message.node : "ComfyUI 正在执行工作流…", percent);
+  } else if (message.status === "finishing") {
+    setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
+  } else if (message.status === "completed") {
+    activePromptId = "";
+    workflowBusy = false;
+    setRunStatus("已完成", "工作流执行成功。", 100);
+  } else if (message.status === "failed") {
+    activePromptId = "";
+    workflowBusy = false;
+    setRunStatus("执行失败", message.message || "请在电脑端查看 ComfyUI 错误详情。");
+  } else if (message.status === "interrupted") {
+    activePromptId = "";
+    workflowBusy = false;
+    setRunStatus("已停止", "当前工作流已中断。");
+  }
+}
+
 function feedback(message, state = "") {
   if (!pairFeedback) return;
   pairFeedback.textContent = message;
@@ -292,6 +320,7 @@ function connectEvents(token) {
       }
       reconnectDelay = 1000;
       nodeUuid = message.node_uuid || nodeUuid;
+      if (message.execution_status?.status) receiveExecutionStatus(message.execution_status);
       setConnected(true, "已连接到电脑端。手机编辑会实时同步回对应导演台。");
       feedback("连接成功，手机端编辑已启用。", "success");
     } else if (message.type === "state") {
@@ -323,26 +352,7 @@ function connectEvents(token) {
         setRunStatus("操作未完成", errors[message.error] || message.message || message.error || "未知错误");
       }
     } else if (message.type === "execution_status") {
-      if (message.prompt_id) activePromptId = message.prompt_id;
-      if (message.status === "running") {
-        workflowBusy = true;
-        const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
-        setRunStatus("执行中", message.node ? "当前节点：" + message.node : "ComfyUI 正在执行工作流…", percent);
-      } else if (message.status === "finishing") {
-        setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
-      } else if (message.status === "completed") {
-        activePromptId = "";
-        workflowBusy = false;
-        setRunStatus("已完成", "工作流执行成功。", 100);
-      } else if (message.status === "failed") {
-        activePromptId = "";
-        workflowBusy = false;
-        setRunStatus("执行失败", message.message || "请在电脑端查看 ComfyUI 错误详情。");
-      } else if (message.status === "interrupted") {
-        activePromptId = "";
-        workflowBusy = false;
-        setRunStatus("已停止", "当前工作流已中断。");
-      }
+      receiveExecutionStatus(message);
     }
   });
   activeSocket.addEventListener("close", event => {
