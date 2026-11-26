@@ -206,6 +206,9 @@ export function attachMobilePairing(ui) {
           if (!localDirty && !conflict) {
             applyRemote(deferred);
             setStatus("手机端后续修改已同步到电脑。");
+          } else if (localDirty) {
+            conflict = true;
+            setStatus("运行提交期间电脑端也发生了修改。为避免覆盖，已暂停同步，请核对两端内容。");
           }
         }
       }
