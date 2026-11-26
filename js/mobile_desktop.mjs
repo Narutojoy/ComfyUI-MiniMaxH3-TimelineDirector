@@ -309,6 +309,10 @@ export function attachMobilePairing(ui) {
       prompt_id: activePromptId,
       segment_index: segmentIndex,
       segment_count: Number.isInteger(segmentCount) && segmentCount > 0 ? segmentCount : undefined,
+      enabled_segment_index: Number.isInteger(Number(payload.enabled_segment_index))
+        ? Number(payload.enabled_segment_index) : undefined,
+      enabled_segment_count: Number.isInteger(Number(payload.enabled_segment_count)) && Number(payload.enabled_segment_count) > 0
+        ? Number(payload.enabled_segment_count) : undefined,
       message: String(payload.error || "").slice(0, 400),
     });
   });
