@@ -44,6 +44,7 @@ class MobileSession:
     sockets: set[web.WebSocketResponse] = field(default_factory=set)
     socket_roles: dict[web.WebSocketResponse, str] = field(default_factory=dict)
     execution_status: dict[str, Any] = field(default_factory=dict)
+    queue_status: dict[str, Any] = field(default_factory=lambda: {"queue_running": [], "queue_pending": []})
 
 
 def _json_size(value: Any) -> int:
@@ -385,7 +386,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
         if session is None:
             await socket.close(code=4003, message=b"Session revoked")
             return socket
-        await socket.send_json({"type": "ready", "revision": session.revision, "updated_at": session.updated_at, "state": session.state, "execution_status": session.execution_status})
+        await socket.send_json({"type": "ready", "revision": session.revision, "updated_at": session.updated_at, "state": session.state, "execution_status": session.execution_status, "queue_status": session.queue_status})
         async for message in socket:
             if message.type == WSMsgType.ERROR:
                 break
@@ -427,14 +428,36 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 if not delivered:
                     await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "desktop_offline"})
             elif socket_role == "desktop":
-                if event_type in {"command_result", "execution_status"}:
+                if event_type in {"command_result", "execution_status", "queue_status"}:
                     safe_event = {"type": event_type}
                     for key in ("request_id", "ok", "error", "status", "prompt_id", "node", "value", "max", "message", "percent"):
                         if key in event:
                             value = event[key]
                             if isinstance(value, (str, int, float, bool)) or value is None:
                                 safe_event[key] = value if not isinstance(value, str) else value[:512]
-                    if event_type == "execution_status":
+                    if event_type == "queue_status":
+                        def clean_items(items: Any) -> list[dict[str, Any]]:
+                            if not isinstance(items, list):
+                                return []
+                            cleaned = []
+                            for item in items[:100]:
+                                if not isinstance(item, dict):
+                                    continue
+                                prompt_id = str(item.get("prompt_id") or "")[:128]
+                                label = str(item.get("label") or "工作流任务")[:120]
+                                number = item.get("number", 0)
+                                created = item.get("create_time", 0)
+                                cleaned.append({
+                                    "prompt_id": prompt_id,
+                                    "label": label,
+                                    "number": number if isinstance(number, (int, float)) and not isinstance(number, bool) else 0,
+                                    "create_time": created if isinstance(created, (int, float)) and not isinstance(created, bool) else 0,
+                                })
+                            return cleaned
+                        safe_event["queue_running"] = clean_items(event.get("queue_running"))
+                        safe_event["queue_pending"] = clean_items(event.get("queue_pending"))
+                        session.queue_status = {"queue_running": safe_event["queue_running"], "queue_pending": safe_event["queue_pending"]}
+                    elif event_type == "execution_status":
                         session.execution_status = safe_event
                     elif event_type == "command_result" and event.get("status") in {"queued", "interrupt_requested"}:
                         current_status = session.execution_status.get("status")
