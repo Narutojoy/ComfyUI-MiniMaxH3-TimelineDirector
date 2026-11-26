@@ -62,8 +62,11 @@ def _send_timeline_segment_progress(finite, index, status, error=None):
     if error:
         payload["error"] = str(error)[:500]
     print(f"[MiniMaxH3 Timeline Progress] SEND {payload}")
-    sender("minimax_h3_timeline_segment_progress", payload,
-           getattr(PromptServer.instance, "client_id", None))
+    # Broadcast to connected ComfyUI frontends. PromptServer.client_id is not
+    # a reliable owner for an expanded-graph node: it can refer to another
+    # browser session (or be unset) by the time this internal node executes.
+    # The planner node_id in the payload lets each frontend filter safely.
+    sender("minimax_h3_timeline_segment_progress", payload)
 FiniteLoopState = io.Custom("MINIMAX_H3_FINITE_LOOP_STATE")
 
 
