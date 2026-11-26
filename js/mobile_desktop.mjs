@@ -400,6 +400,7 @@ export function attachMobilePairing(ui) {
       return;
     }
     restoreButton.disabled = true;
+    dialog.style.display = "flex";
     setStatus("正在检查手机端最新进度…");
     try {
       const response = await fetch(API_ROOT + "/state", {
