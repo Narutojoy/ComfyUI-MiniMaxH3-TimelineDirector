@@ -71,6 +71,8 @@ let reconnectDelay = 1000;
 let activePanel = "segments";
 let activeSegment = 0;
 let rememberedSegmentPromptScrollTop = 0;
+let rememberedSegmentPickerScrollLeft = 0;
+let rememberedSelectedChipLeft = null;
 let executingSegmentIndex = null;
 let selectedVideoId = "";
 let mobilePlayhead = 0;
@@ -628,13 +630,13 @@ function renderPanel() {
   const previousSegmentPicker = activePanel === "segments"
     ? editorContent.querySelector(".mobile-segment-picker")
     : null;
-  const previousSegmentScrollLeft = previousSegmentPicker?.scrollLeft ?? 0;
-  const previousSelectedChip = previousSegmentPicker?.querySelector(
-    '[data-select-mobile-segment="' + activeSegment + '"]'
-  );
-  const previousSelectedChipLeft = previousSelectedChip && previousSegmentPicker
-    ? previousSelectedChip.getBoundingClientRect().left - previousSegmentPicker.getBoundingClientRect().left
-    : null;
+  if (previousSegmentPicker) {
+    rememberedSegmentPickerScrollLeft = previousSegmentPicker.scrollLeft;
+    const selectedChip = previousSegmentPicker.querySelector(
+      '[data-select-mobile-segment="' + activeSegment + '"]'
+    );
+    if (selectedChip) rememberedSelectedChipLeft = selectedChip.getBoundingClientRect().left - previousSegmentPicker.getBoundingClientRect().left;
+  }
   document.querySelectorAll(".bottom-nav [data-panel]").forEach(button => button.classList.toggle("active", button.dataset.panel === activePanel));
   const titles = { segments:"分段编辑", assets:"素材管理", groups:"分组管理", settings:"连接设置" };
   editorHeading.textContent = titles[activePanel] || "移动导演台";
@@ -651,13 +653,13 @@ function renderPanel() {
     if (nextPrompt) nextPrompt.scrollTop = rememberedSegmentPromptScrollTop;
     const nextSegmentPicker = editorContent.querySelector(".mobile-segment-picker");
     if (!nextSegmentPicker) return;
-    nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
+    nextSegmentPicker.scrollLeft = rememberedSegmentPickerScrollLeft;
     const nextSelectedChip = nextSegmentPicker.querySelector(
       '[data-select-mobile-segment="' + activeSegment + '"]'
     );
-    if (nextSelectedChip && previousSelectedChipLeft !== null) {
+    if (nextSelectedChip && rememberedSelectedChipLeft !== null) {
       const nextLeft = nextSelectedChip.getBoundingClientRect().left - nextSegmentPicker.getBoundingClientRect().left;
-      nextSegmentPicker.scrollLeft += nextLeft - previousSelectedChipLeft;
+      nextSegmentPicker.scrollLeft += nextLeft - rememberedSelectedChipLeft;
     }
   });
 }
@@ -1310,7 +1312,15 @@ pairInput?.addEventListener("keydown",event=>{if(event.key==="Enter")claimPairin
 pairInput?.addEventListener("input",()=>{pairInput.value=pairInput.value.toUpperCase().replace(/[^A-Z2-9]/g,"").slice(0,8);});
 document.querySelectorAll(".bottom-nav [data-panel]").forEach(button=>button.addEventListener("click",()=>{
   const prompt=editorContent?.querySelector("#segment-prompt");
-  if(activePanel==="segments"&&prompt)rememberedSegmentPromptScrollTop=prompt.scrollTop;
+  if(activePanel==="segments") {
+    if(prompt) rememberedSegmentPromptScrollTop=prompt.scrollTop;
+    const picker=editorContent?.querySelector(".mobile-segment-picker");
+    if(picker) {
+      rememberedSegmentPickerScrollLeft=picker.scrollLeft;
+      const chip=picker.querySelector('[data-select-mobile-segment="' + activeSegment + '"]');
+      if(chip) rememberedSelectedChipLeft=chip.getBoundingClientRect().left-picker.getBoundingClientRect().left;
+    }
+  }
   activePanel=button.dataset.panel;renderPanel();
 }));
 helpDialog?.addEventListener("click",event=>{if(event.target===helpDialog)helpDialog.hidden=true;});
