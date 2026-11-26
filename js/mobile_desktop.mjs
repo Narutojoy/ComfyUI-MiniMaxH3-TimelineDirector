@@ -263,6 +263,9 @@ export function attachMobilePairing(ui) {
     },
     executing: event => {
       const detail = event.detail || {};
+      // ComfyUI emits executing(null) after execution_success. Ignore this
+      // trailing queue-clear event once the active prompt has reached terminal state.
+      if (!activePromptId) return;
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) {
         reportExecution(detail.node == null ? "finishing" : "running", detail);
       }
