@@ -399,7 +399,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 continue
             event_type = str(event.get("type") or "")
             if socket_role == "mobile":
-                if event_type not in {"run_request", "interrupt_request"}:
+                if event_type not in {"run_request", "interrupt_request", "save_request"}:
                     await socket.send_json({"type": "command_result", "request_id": event.get("request_id"), "ok": False, "error": "unsupported_command"})
                     continue
                 request_id = str(event.get("request_id") or "")
@@ -408,7 +408,7 @@ async def mobile_events(request: web.Request) -> web.StreamResponse:
                 except (ValueError, TypeError, AttributeError):
                     await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_request_id"})
                     continue
-                if event_type == "run_request":
+                if event_type in {"run_request", "save_request"}:
                     command_revision = event.get("revision")
                     if not isinstance(command_revision, int) or isinstance(command_revision, bool):
                         await socket.send_json({"type": "command_result", "request_id": request_id, "ok": False, "error": "invalid_revision"})
