@@ -72,6 +72,8 @@ export function attachMobilePairing(ui) {
   if (!head) return;
 
   const mobileUrl = new URL("./mobile/index.html", import.meta.url).href;
+  const currentNodeUuid = nodeUuid(ui);
+  const credentialKey = "m3td-mobile-desktop-token:" + currentNodeUuid;
   const button = document.createElement("button");
   button.type = "button";
   button.className = "m3td-btn";
@@ -88,6 +90,13 @@ export function attachMobilePairing(ui) {
     window.location.assign(mobileUrl);
   });
   head.insertBefore(mobileReturnButton, button.nextSibling);
+
+  const restoreButton = document.createElement("button");
+  restoreButton.type = "button";
+  restoreButton.className = "m3td-btn";
+  restoreButton.textContent = "检查手机进度";
+  restoreButton.title = "读取手机端最近同步的导演台状态，确认后恢复到电脑";
+  head.insertBefore(restoreButton, mobileReturnButton.nextSibling);
 
   const dialog = ensureDialog();
   const status = dialog.querySelector("[data-status]");
@@ -120,6 +129,7 @@ export function attachMobilePairing(ui) {
   dialog.querySelector("[data-refresh-qr]").addEventListener("click", renderPairQr);
   urlInput.addEventListener("change", renderPairQr);
   let token = "";
+  try { token = localStorage.getItem(credentialKey) || ""; } catch (_) {}
   let revision = 0;
   let socket = null;
   let applyingRemote = false;
@@ -258,6 +268,7 @@ export function attachMobilePairing(ui) {
       }
       if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
       token = payload.token;
+      try { localStorage.setItem(credentialKey, token); } catch (_) {}
       revision = payload.revision;
       codeBox.textContent = payload.code;
       currentPairCode = payload.code;
@@ -380,6 +391,62 @@ export function attachMobilePairing(ui) {
     }
   });
 
+
+  restoreButton.addEventListener("click", async () => {
+    if (restoreButton.disabled) return;
+    const savedToken = (() => { try { return localStorage.getItem(credentialKey) || token; } catch (_) { return token; } })();
+    if (!savedToken) {
+      setStatus("当前节点没有已保存的手机配对凭证，请先完成一次手机配对。");
+      return;
+    }
+    restoreButton.disabled = true;
+    setStatus("正在检查手机端最新进度…");
+    try {
+      const response = await fetch(API_ROOT + "/state", {
+        method: "GET",
+        headers: { Authorization: "Bearer " + savedToken },
+        cache: "no-store",
+      });
+      const payload = await response.json();
+      if (response.status === 401) {
+        try { localStorage.removeItem(credentialKey); } catch (_) {}
+        token = "";
+        throw new Error("手机配对凭证已过期或被撤销，请重新配对。");
+      }
+      if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
+      if (payload.node_uuid !== currentNodeUuid) throw new Error("配对凭证对应的不是当前导演台节点，已停止恢复。");
+      const remoteRevision = Number(payload.revision) || 0;
+      const remoteJson = JSON.stringify(payload.state);
+      const localJson = JSON.stringify(ui.state);
+      const updated = Number(payload.updated_at) > 0
+        ? new Date(Number(payload.updated_at) * 1000).toLocaleString()
+        : "时间信息不可用";
+      if (remoteJson === localJson) {
+        revision = remoteRevision;
+        token = savedToken;
+        setStatus("手机端与电脑端内容一致 · 版本 " + remoteRevision + " · 最近更新 " + updated);
+        return;
+      }
+      const confirmed = window.confirm(
+        "检查到手机端有一份不同的导演台进度。\n\n手机端版本：" + remoteRevision +
+        "\n最近更新：" + updated +
+        "\n\n确认后将用手机端状态替换当前电脑端导演台状态。建议先保存当前工作流备份。\n\n是否恢复？"
+      );
+      if (!confirmed) {
+        setStatus("已取消恢复，电脑端内容保持不变。手机端版本 " + remoteRevision + " · " + updated);
+        return;
+      }
+      token = savedToken;
+      revision = remoteRevision;
+      applyRemote(payload);
+      setStatus("已恢复手机端进度 · 版本 " + remoteRevision + " · " + updated + "。请按 Ctrl+S 保存工作流。");
+    } catch (error) {
+      setStatus("检查手机进度失败：" + error.message);
+    } finally {
+      restoreButton.disabled = false;
+    }
+  });
+
   const normalizeMobileState = value => value;
   let pairingDisposed = false;
   const cleanupPairing = () => {
@@ -392,17 +459,10 @@ export function attachMobilePairing(ui) {
     connectionGeneration += 1;
     clearTimeout(reconnectTimer);
     reconnectTimer = 0;
-    const activeToken = token;
     token = "";
     const previousSocket = socket;
     socket = null;
     previousSocket?.close();
-    if (activeToken) {
-      fetch(API_ROOT + "/session/revoke", {
-        method: "POST",
-        headers: { Authorization: "Bearer " + activeToken },
-      }).catch(() => {});
-    }
   };
   const handleRootRemoved = event => {
     if (event.target === ui.root) cleanupPairing();
