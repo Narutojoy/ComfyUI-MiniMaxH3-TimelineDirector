@@ -204,6 +204,8 @@ function receiveExecutionStatus(message) {
   if (message.status === "queued") {
     executionTerminal = false;
     workflowBusy = true;
+    executingSegmentIndex = null;
+    if (runSegmentLabel) runSegmentLabel.textContent = "当前启用分段：等待识别";
     setRunStatus("已加入队列", "工作流已提交给 ComfyUI，等待执行…");
   } else if (message.status === "stopping") {
     setRunStatus("正在停止", "ComfyUI 正在处理中断请求…");
@@ -220,7 +222,8 @@ function receiveExecutionStatus(message) {
       if (enabledRank >= 0) {
         executingSegmentIndex = parsedIndex;
         if (runSegmentLabel) {
-          runSegmentLabel.textContent = "当前启用分段：" + (enabledRank + 1) + " / " + enabledSegments.length +
+          const segmentPrefix = message.segment_status === "completed" ? "已完成启用分段：" : "当前启用分段：";
+          runSegmentLabel.textContent = segmentPrefix + (enabledRank + 1) + " / " + enabledSegments.length +
             "（原第 " + (parsedIndex + 1) + " 段）";
         }
       }
