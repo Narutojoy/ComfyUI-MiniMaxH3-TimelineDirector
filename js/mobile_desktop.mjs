@@ -431,7 +431,7 @@ export function attachMobilePairing(ui) {
               applyRemote(message);
               setStatus("手机端修改已同步到电脑。");
             }
-          } else if (message.type === "run_request" || message.type === "interrupt_request") {
+          } else if (message.type === "run_request" || message.type === "interrupt_request" || message.type === "save_request") {
             void handleMobileCommand(message);
           }
         });
