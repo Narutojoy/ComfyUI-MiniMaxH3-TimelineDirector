@@ -394,28 +394,59 @@ export function attachMobilePairing(ui) {
 
   restoreButton.addEventListener("click", async () => {
     if (restoreButton.disabled) return;
-    const savedToken = (() => { try { return localStorage.getItem(credentialKey) || token; } catch (_) { return token; } })();
-    if (!savedToken) {
-      setStatus("当前节点没有已保存的手机配对凭证，请先完成一次手机配对。");
-      return;
-    }
     restoreButton.disabled = true;
     dialog.style.display = "flex";
     setStatus("正在检查手机端最新进度…");
     try {
-      const response = await fetch(API_ROOT + "/state", {
-        method: "GET",
-        headers: { Authorization: "Bearer " + savedToken },
-        cache: "no-store",
-      });
-      const payload = await response.json();
-      if (response.status === 401) {
-        try { localStorage.removeItem(credentialKey); } catch (_) {}
-        token = "";
-        throw new Error("手机配对凭证已过期或被撤销，请重新配对。");
+      // The node UUID is persisted in the workflow, while an older desktop
+      // credential may have been stored under a previous UUID. Validate every
+      // saved token against the server before adopting it; never trust the key
+      // name alone and never delete the original credential during migration.
+      const candidates = [];
+      try {
+        const primary = localStorage.getItem(credentialKey) || token;
+        if (primary) candidates.push(primary);
+        for (const key of Object.keys(localStorage)) {
+          if (!key.startsWith("m3td-mobile-desktop-token:") || key === credentialKey) continue;
+          const value = localStorage.getItem(key);
+          if (value && !candidates.includes(value)) candidates.push(value);
+        }
+      } catch (_) {
+        if (token && !candidates.includes(token)) candidates.push(token);
       }
-      if (!response.ok) throw new Error(payload.error || ("HTTP " + response.status));
-      if (payload.node_uuid !== currentNodeUuid) throw new Error("配对凭证对应的不是当前导演台节点，已停止恢复。");
+      if (!candidates.length) {
+        throw new Error("没有找到已保存的手机配对凭证。为保护现有手机会话，请勿重新配对；请先检查浏览器存储。");
+      }
+
+      let savedToken = "";
+      let payload = null;
+      let lastHttpStatus = 0;
+      for (const candidate of candidates) {
+        const response = await fetch(API_ROOT + "/state", {
+          method: "GET",
+          headers: { Authorization: "Bearer " + candidate },
+          cache: "no-store",
+        });
+        lastHttpStatus = response.status;
+        let result = {};
+        try { result = await response.json(); } catch (_) {}
+        if (response.status === 401) continue;
+        if (!response.ok) throw new Error(result.error || ("HTTP " + response.status));
+        if (result.node_uuid !== currentNodeUuid) continue;
+        savedToken = candidate;
+        payload = result;
+        break;
+      }
+      if (!savedToken || !payload) {
+        throw new Error(
+          lastHttpStatus === 401
+            ? "找到的凭证均已失效，未修改或删除任何凭证。"
+            : "没有找到属于当前导演台节点的手机会话，未修改任何凭证。"
+        );
+      }
+      token = savedToken;
+      try { localStorage.setItem(credentialKey, savedToken); } catch (_) {}
+
       const remoteRevision = Number(payload.revision) || 0;
       const remoteJson = JSON.stringify(payload.state);
       const localJson = JSON.stringify(ui.state);
