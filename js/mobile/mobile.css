@@ -191,3 +191,8 @@ body.is-connected .connect-actions{display:none}
 .mobile-assigned-row>span{min-width:0;overflow-wrap:anywhere;font-size:11px}
 .mobile-assigned-row .mobile-order-actions{grid-template-columns:repeat(2,28px)}
 .mobile-order-actions button:disabled{opacity:.35}
+
+.mobile-run-progress{height:6px;margin:12px 0 6px;overflow:hidden;border-radius:999px;background:var(--line)}
+.mobile-run-progress>div{width:0;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s ease}
+#mobile-run-status{font-weight:700;color:var(--accent)}
+#mobile-run-button:disabled,#mobile-stop-button:disabled{opacity:.45;cursor:not-allowed}
