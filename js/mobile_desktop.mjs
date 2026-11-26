@@ -205,7 +205,12 @@ export function attachMobilePairing(ui) {
       pendingRunRequest = requestId;
       try {
         const accepted = await app.queuePrompt(0, 1);
-        if (accepted === false) {
+        if (accepted === false && app.processingQueue === true) {
+          // ComfyUI queuePrompt() adds the item to its internal queueItems
+          // before returning false when another queuePrompt call is processing.
+          workflowQueued = true;
+          reply(true, "", { status: "queued", queued_in_frontend: true });
+        } else if (accepted === false) {
           reply(false, "queue_rejected");
         } else {
           workflowQueued = true;
