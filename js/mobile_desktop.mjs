@@ -251,6 +251,7 @@ export function attachMobilePairing(ui) {
   const executionListeners = {
     execution_start: event => {
       const detail = event.detail || {};
+      clearCompletionFallback();
       activePromptId = String(detail.prompt_id || "");
       workflowQueued = true;
       reportExecution("running", detail);
@@ -264,18 +265,21 @@ export function attachMobilePairing(ui) {
     progress: event => reportExecution("running", event.detail || {}),
     execution_success: event => {
       const detail = event.detail || {};
+      clearCompletionFallback();
       reportExecution("completed", detail);
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
       workflowQueued = false;
     },
     execution_error: event => {
       const detail = event.detail || {};
+      clearCompletionFallback();
       reportExecution("failed", { ...detail, message: detail.exception_message || detail.message });
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
       workflowQueued = false;
     },
     execution_interrupted: event => {
       const detail = event.detail || {};
+      clearCompletionFallback();
       reportExecution("interrupted", detail);
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
       workflowQueued = false;
@@ -479,6 +483,12 @@ export function attachMobilePairing(ui) {
 
   let queuePollInFlight = false;
   let lastQueueSnapshot = "";
+  let lastRunningPromptIds = new Set();
+  let completionFallbackTimer = 0;
+  const clearCompletionFallback = () => {
+    clearTimeout(completionFallbackTimer);
+    completionFallbackTimer = 0;
+  };
   const publishQueueSnapshot = async () => {
     if (!token || !socket || socket.readyState !== WebSocket.OPEN || queuePollInFlight) return;
     queuePollInFlight = true;
@@ -499,6 +509,25 @@ export function attachMobilePairing(ui) {
         queue_running: normalize(data.queue_running, "running"),
         queue_pending: normalize(data.queue_pending, "pending")
       };
+      const runningIds = new Set(snapshot.queue_running.map(item => item.prompt_id).filter(Boolean));
+      const pendingIds = new Set(snapshot.queue_pending.map(item => item.prompt_id).filter(Boolean));
+      if (activePromptId && lastRunningPromptIds.has(activePromptId) && !runningIds.has(activePromptId) && !pendingIds.has(activePromptId) && !completionFallbackTimer) {
+        const finishedPromptId = activePromptId;
+        completionFallbackTimer = setTimeout(() => {
+          completionFallbackTimer = 0;
+          if (activePromptId !== finishedPromptId) return;
+          void api.fetchApi("/queue").then(response => response.ok ? response.json() : null).then(latest => {
+            if (!latest || activePromptId !== finishedPromptId) return;
+            const stillQueued = [...(latest.queue_running || []), ...(latest.queue_pending || [])].some(item => String(item?.[1] || "") === finishedPromptId);
+            if (!stillQueued && activePromptId === finishedPromptId) {
+              reportExecution("completed", { prompt_id: finishedPromptId, message: "ComfyUI 队列已确认该任务结束。" });
+              activePromptId = "";
+              workflowQueued = false;
+            }
+          }).catch(() => {});
+        }, 3500);
+      }
+      lastRunningPromptIds = runningIds;
       const serialized = JSON.stringify(snapshot);
       if (serialized !== lastQueueSnapshot) {
         lastQueueSnapshot = serialized;
