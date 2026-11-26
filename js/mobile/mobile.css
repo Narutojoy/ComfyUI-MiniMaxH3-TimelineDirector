@@ -215,3 +215,6 @@ body.is-connected .connect-actions{display:none}
 .mobile-run-progress>div{width:0;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s ease}
 #mobile-run-status{font-weight:700;color:var(--accent)}
 #mobile-run-button:disabled,#mobile-stop-button:disabled{opacity:.45;cursor:not-allowed}
+
+.mobile-run-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;color:var(--muted);font-size:11px;font-weight:600}
+.mobile-run-meta span:first-child{color:var(--text)}
