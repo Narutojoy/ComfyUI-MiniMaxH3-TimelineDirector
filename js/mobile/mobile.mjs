@@ -355,6 +355,12 @@ async function restoreSession() {
 
 function renderPanel() {
   if (!currentState || !editorContent) return;
+  // Re-rendering the editor replaces the segment chips. Preserve the user's
+  // horizontal position so selecting a segment does not jump back to #1.
+  const previousSegmentPicker = activePanel === "segments"
+    ? editorContent.querySelector(".mobile-segment-picker")
+    : null;
+  const previousSegmentScrollLeft = previousSegmentPicker?.scrollLeft ?? 0;
   document.querySelectorAll(".bottom-nav [data-panel]").forEach(button => button.classList.toggle("active", button.dataset.panel === activePanel));
   const titles = { segments:"分段编辑", assets:"素材管理", groups:"分组管理", settings:"连接设置" };
   editorHeading.textContent = titles[activePanel] || "移动导演台";
@@ -362,12 +368,16 @@ function renderPanel() {
   else if (activePanel === "assets") renderAssetsPanel();
   else if (activePanel === "groups") renderGroupsPanel();
   else renderSettingsPanel();
+  if (activePanel === "segments") {
+    const nextSegmentPicker = editorContent.querySelector(".mobile-segment-picker");
+    if (nextSegmentPicker) nextSegmentPicker.scrollLeft = previousSegmentScrollLeft;
+  }
 }
 
 function renderSegmentPicker() {
   return `<div class="mobile-segment-picker">${segments().map((segment,index)=>`
     <button type="button" class="mobile-segment-chip ${index===activeSegment?"active":""} ${segment.enabled===false?"disabled":""}" data-select-mobile-segment="${index}">
-      <strong>${escapeHTML(segmentLabel(segment,index))}</strong><small>${segment.enabled===false?"已禁用":(segment.endFrame-segment.startFrame)/24+" 秒"}</small>
+      <strong>${escapeHTML(segmentLabel(segment,index))}</strong><small>${segment.enabled===false?"已禁用":((segment.endFrame-segment.startFrame)/24).toFixed(2)+" 秒"}</small>
     </button>`).join("")}</div>`;
 }
 
