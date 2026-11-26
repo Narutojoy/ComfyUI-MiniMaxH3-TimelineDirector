@@ -209,6 +209,7 @@ body.is-connected .connect-actions{display:none}
 .mobile-assigned-row.is-drop-target{border-color:var(--accent);background:rgba(167,139,250,.12)}
 .mobile-assigned-row .mobile-order-actions{grid-template-columns:repeat(2,28px)}
 .mobile-order-actions button:disabled{opacity:.35}
+.mobile-order-actions .mobile-icon-button{border:0;background:rgba(248,113,113,.12);color:#fca5a5;font-size:19px;font-weight:600}
 
 .mobile-run-progress{height:6px;margin:12px 0 6px;overflow:hidden;border-radius:999px;background:var(--line)}
 .mobile-run-progress>div{width:0;height:100%;border-radius:inherit;background:var(--accent);transition:width .2s ease}
