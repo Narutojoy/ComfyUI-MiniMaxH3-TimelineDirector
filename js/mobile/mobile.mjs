@@ -211,30 +211,23 @@ function receiveExecutionStatus(message) {
     executionTerminal = false;
     workflowBusy = true;
     const percent = Number.isFinite(Number(message.percent)) ? Number(message.percent) : null;
-    const nodeName = String(message.node || "");
-    const segmentMatch = nodeName.match(/\.sample_(\d+)\b/i);
-    if (segmentMatch) {
-      const parsedIndex = Number(segmentMatch[1]) - 1;
-      const allSegments = segments();
-      const enabledSegments = allSegments.map((segment, index) => ({ segment, index }))
+    const parsedIndex = Number(message.segment_index);
+    const hasSegmentProgress = Number.isInteger(parsedIndex) && parsedIndex >= 0;
+    if (hasSegmentProgress) {
+      const enabledSegments = segments().map((segment, index) => ({ segment, index }))
         .filter(item => item.segment?.enabled !== false);
       const enabledRank = enabledSegments.findIndex(item => item.index === parsedIndex);
-      if (Number.isInteger(parsedIndex) && parsedIndex >= 0 && enabledRank >= 0) {
+      if (enabledRank >= 0) {
         executingSegmentIndex = parsedIndex;
         if (runSegmentLabel) {
           runSegmentLabel.textContent = "当前启用分段：" + (enabledRank + 1) + " / " + enabledSegments.length +
             "（原第 " + (parsedIndex + 1) + " 段）";
         }
       }
+    } else if (runSegmentLabel && executingSegmentIndex == null) {
+      runSegmentLabel.textContent = "当前启用分段：识别中";
     }
-    if (runSegmentLabel && !segmentMatch) {
-      const enabledCount = segments().filter(segment => segment?.enabled !== false).length;
-      runSegmentLabel.textContent = executingSegmentIndex == null
-        ? "当前启用分段：识别中"
-        : "当前启用分段：" + segments().slice(0, executingSegmentIndex + 1).filter(segment => segment?.enabled !== false).length +
-          " / " + enabledCount + "（原第 " + (executingSegmentIndex + 1) + " 段）";
-    }
-    setRunStatus("执行中", segmentMatch ? "正在生成本段视频…" : "ComfyUI 正在执行工作流…", percent);
+    setRunStatus("执行中", hasSegmentProgress ? "正在生成本段视频…" : "ComfyUI 正在执行工作流…", percent);
   } else if (message.status === "finishing") {
     setRunStatus("收尾中", "ComfyUI 正在完成当前工作流…", 100);
   } else if (message.status === "completed") {
