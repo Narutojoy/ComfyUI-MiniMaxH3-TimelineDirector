@@ -146,6 +146,7 @@ export function attachMobilePairing(ui) {
   let reconnectDelay = 1000;
   let connectionGeneration = 0;
   let activePromptId = "";
+  let workflowQueued = false;
   let pendingRunRequest = "";
   const handledCommands = new Set();
 
@@ -181,7 +182,7 @@ export function attachMobilePairing(ui) {
       return;
     }
     if (message.type === "run_request") {
-      if (pendingRunRequest || activePromptId) {
+      if (pendingRunRequest || activePromptId || workflowQueued) {
         reply(false, "workflow_busy");
         return;
       }
@@ -191,6 +192,7 @@ export function attachMobilePairing(ui) {
         if (accepted === false) {
           reply(false, "queue_rejected");
         } else {
+          workflowQueued = true;
           reply(true, "", { status: "queued" });
         }
       } catch (error) {
@@ -218,6 +220,7 @@ export function attachMobilePairing(ui) {
     execution_start: event => {
       const detail = event.detail || {};
       activePromptId = String(detail.prompt_id || "");
+      workflowQueued = true;
       reportExecution("running", detail);
     },
     executing: event => {
@@ -231,16 +234,19 @@ export function attachMobilePairing(ui) {
       const detail = event.detail || {};
       reportExecution("completed", detail);
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+      workflowQueued = false;
     },
     execution_error: event => {
       const detail = event.detail || {};
       reportExecution("failed", { ...detail, message: detail.exception_message || detail.message });
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+      workflowQueued = false;
     },
     execution_interrupted: event => {
       const detail = event.detail || {};
       reportExecution("interrupted", detail);
       if (!detail.prompt_id || String(detail.prompt_id) === activePromptId) activePromptId = "";
+      workflowQueued = false;
     },
   };
   for (const [name, listener] of Object.entries(executionListeners)) api.addEventListener(name, listener);
